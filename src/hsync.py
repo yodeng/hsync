@@ -150,23 +150,17 @@ class DownloadByRange(object):
 
     def _run(self):
         self.startime = int(time.time())
-        _thread.start_new_thread(self.check_offset, (self.datatimeout,))
         Done = False
         try:
             if self.url.startswith("http"):
                 self.loop = asyncio.get_event_loop()
                 self.loop.run_until_complete(self.download())
-            elif self.url.startswith("ftp"):
-                self.ftp = True
-                asyncio.run(self.download_ftp())
             else:
-                self.loger.error("Only http/https or ftp urls allowed.")
+                self.loger.error("Only http/https urls allowed.")
                 sys.exit(1)
             Done = True
         except ReloadException as e:
             self.loger.debug(e)
-            if os.environ.get("RUN_MAIN") == "true":
-                sys.exit(3)
             raise e
         except asyncio.TimeoutError as e:
             raise TimeoutException("Connect url timeout")
@@ -212,44 +206,6 @@ class DownloadByRange(object):
             log.setLevel(logging.ERROR)
         return log
 
-    def check_offset(self, timeout=30):
-        time.sleep(5)
-        while True:
-            o = self._get_data
-            time.sleep(timeout)
-            if o == self._get_data:
-                if (self.ftp and o == self.content_length):
-                    return
-                elif len(self.offset):
-                    for k, v in self.offset.items():
-                        if sum(v) != k+1:
-                            break
-                    else:
-                        return
-                self._exit_without_data(timeout)
-            else:
-                self.loger.debug("data is downloading")
-
-    @property
-    def _get_data(self):
-        data = 0
-        if self.ftp:
-            if os.path.isfile(self.outfile):
-                data = os.path.getsize(self.outfile)
-        else:
-            data = deepcopy(self.offset)
-        return data
-
-    def _exit_without_data(self, timeout):
-        if os.environ.get("RUN_MAIN") == "true":
-            self.loger.debug(
-                "Any data gets in %s sec, Exit 3", timeout)
-        else:
-            self.loger.error(
-                "Any data gets in %s sec, Exit 3", timeout)
-        self.write_offset()
-        os._exit(3)
-
     def run(self):
         es = exitSync(obj=self)
         es.start()
@@ -260,6 +216,7 @@ class DownloadByRange(object):
                 self.loger.debug("Remove %s", os.path.basename(self.rang_file))
             els = int(time.time()) - self.startime
             self.loger.info("Donwload success, time elapse: %s sec", els)
+            sys.exit()
         return res
 
 
@@ -341,7 +298,7 @@ async def hsync(args, conf):
     conf.hsync.Port = conf.hsync.Port or conf.hscp.Port or conf.hsyncd.Port
     host = mk_hsync_args(args, conf.hsync, "Host_ip", "127.0.0.1")
     port = mk_hsync_args(args, conf.hsync, "Port", 10808)
-    log = loger(multi=False, level=args.debug and "debug" or "info")
+    log = loger(multi=False)
     n = 0
     while n < int(conf.hsync.Max_timeout_retry):
         listdir = requests.get(
@@ -409,7 +366,7 @@ def hscp(args, conf):
     if not listdir:
         sys.exit("No such file or directory %s in remote host." % remote_path)
     elif len(listdir) == 1:
-        log = loger(multi=False, level=args.debug and "debug" or "info")
+        log = loger(multi=False)
         d = list(listdir.keys())[0]
         s = listdir[d]
         if s < 0:
@@ -421,22 +378,22 @@ def hscp(args, conf):
             df = down_file_by_range(
                 "http://{}:{}/get".format(host, port), outfile=local_path, path=d)
     else:
-        log = loger(multi=True, level=args.debug and "debug" or "info")
+        log = loger(multi=True)
         mkdir(local_path)
-        p = Pool(min(args.num, len(listdir)),
-                 initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),))
+        p = ProcessPoolExecutor(min(args.num, len(listdir)))
+        features = []
         for d, s in listdir.items():
             outpath = os.path.join(local_path, d[len(remote_path)+1:])
             mkdir(os.path.dirname(outpath))
             if s >= 0:
-                p.apply_async(down_file_by_range, args=(
-                    "http://{}:{}/get".format(host, port), outpath, d))
+                f = p.submit(down_file_by_range,
+                             "http://{}:{}/get".format(host, port), outpath, d)
+                features.append(f)
             elif s < 0:
                 mkdir(outpath)
                 log.warn("empty remote directory %s --> %s",
                          d, outpath)
-        p.close()
-        p.join()
+        wait(features, return_when="ALL_COMPLETED")
 
 
 if __name__ == "__main__":

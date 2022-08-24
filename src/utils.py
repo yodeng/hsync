@@ -188,8 +188,6 @@ def hscpArg():
                         help="output path", metavar="<str>")
     parser.add_argument("--sync", dest="sync", action='store_true',
                         help="sync mode", default=False)
-    parser.add_argument("--debug", action='store_true',
-                        help="logging debug", default=False)
     return parser.parse_args()
 
 

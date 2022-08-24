@@ -87,7 +87,7 @@ optional arguments:
 
 ```
 $ hsync -h 
-usage: hsync [-h] -i <file> [-host <str>] [-p <int>] [-n <int>] [-o <str>] [--sync] [--debug]
+usage: hsync [-h] -i <file> [-host <str>] [-p <int>] [-n <int>] [-o <str>] [--sync]
 
 hscp and hsync for remote file synchronize
 
@@ -104,7 +104,6 @@ optional arguments:
   -o <str>, --output <str>
                         output path
   --sync                sync mode
-  --debug               logging debug
 ```
 
 命令参数解释如下：
@@ -118,7 +117,6 @@ optional arguments:
 | -n/--num     | 同事拉取的最大文件数，默认3个，采用多进程，每个进程均使用异步进程拉取 |
 | -o/--output  | 保存到本地的路径（文件或文件夹），文件夹不存在会自动创建     |
 | --sync       | 采用同步模式，当远程数据是增量变化的时候使用，默认不采用     |
-| --debug      | debug日志级别，会输出更多的日志信息                          |
 
 ##### 3.2.2 同步数据
 
@@ -127,6 +125,8 @@ optional arguments:
 仅支持远程数据文件的追加写入模式，当远程数据为修改写入时，可能会导致传输到本地的数据不一致的情况。
 
 传输过程为增量传输，支持断点续传。同步进程会一直等待远程端产生新的数据，直到进程被杀掉。
+
+远程数据减少或被删除时，已同步的数据不会被删除。
 
 同步到本地的数据，只保证数据内容一样，可通过MD5进行验证，不保证相关时间戳和文件元信息一致，文件所属组为命令使用的用户。
 
@@ -142,7 +142,7 @@ optional arguments:
 
 服务端程序的默认日志文件会存放到该目录之下，服务端进程管理的`pidfile`文件也会存放到该目录之下
 
-如果目录下存在`hsync.ini`配置文件，也会优先加载此目录下的`hsync.ini`配置，
+如果目录下存在`hsync.ini`配置文件，也会优先加载此目录下的`hsync.ini`配置
 
 #### 4.2 配置文件说明
 
@@ -158,7 +158,7 @@ Host_ip =                          ## hsyncd服务绑定的主机ip, 不指定�
 Port = 10808                       ## hsyncd服务绑定的主机ip, 不指定则默认为10808，命令等同于-p/--port参数
 Forbidden_file = *.fa, *.fq        ## 服务端禁止客户端传输的文件规则，多个规则使用空白或逗号分割。
 Forbidden_dir = /etc/              ## 服务端禁止客户端传输的文件夹绝对路径，多个规则使用空白或逗号分割。
-Allowed_host =                     ## 服务端允许连接的客户端ip，多个ip使用空白或逗号分割，非指定的ip则不允许连接，不指定表示默认所有ip可连接服务										  端，会不安全，建议限制ip, 填写时应注意网络状态，如果有负载均衡或proxy服务器，应填实际直接连接的ip
+Allowed_host =                     ## 服务端允许连接的客户端ip，多个ip使用空白或逗号分割，非指定的ip则不允许连接，不指定表示默认所有ip可连接服务端，会不安全，建议限制ip, 填写时应注意网络状态，如果有负载均衡或proxy服务器，应填实际直接连接的ip
 
 [hscp]                             ## hsync拉取相关配置
 Host_ip =                          ## hsync连接的hsyncd服务器ip，需网络可达，默认为localhost
