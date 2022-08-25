@@ -305,7 +305,7 @@ async def hsync(args, conf):
     n = 0
     while n < int(conf.hsync.Max_timeout_retry):
         listdir = requests.get(
-            "http://{}:{}/lsdir".format(host, port), params={"dir": remote_path}, timeout=int(conf.hsync.Data_timeout))
+            "http://{}:{}/lsdir".format(host, port), params={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
         if listdir.status_code == 403:
             raise ServerForbidException(
                 "Server forbidden for ip connected")
@@ -342,6 +342,10 @@ async def hsync(args, conf):
                                 else:
                                     continue
                             elif current_size < s:
+                                if re.search(r'/\.[^/]+', d):
+                                    log.warn(
+                                        "ignore hidden file or directory %s", d)
+                                    continue
                                 sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
                                              ss=current_size, ts=s, path=d)
                                 tasks.append(sync.run())
@@ -353,7 +357,8 @@ async def hsync(args, conf):
                     await asyncio.gather(*tasks)
                 except asyncio.TimeoutError as e:
                     n += 1
-                    continue
+                except ReloadException:
+                    pass
                 except Exception as e:
                     raise e
         time.sleep(int(conf.hsync.Sync_interval_sec))
@@ -370,7 +375,7 @@ def hscp(args, conf):
     host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
     listdir = requests.get(
-        "http://{}:{}/lsdir".format(host, port), params={"dir": remote_path})
+        "http://{}:{}/lsdir".format(host, port), params={"path": remote_path})
     if listdir.status_code == 403:
         raise ServerForbidException(
             "Server forbidden for ip connected")
@@ -399,6 +404,9 @@ def hscp(args, conf):
             outpath = os.path.join(local_path, d[len(remote_path)+1:])
             mkdir(os.path.dirname(outpath))
             if s >= 0:
+                if re.search(r'/\.[^/]+', d):
+                    log.warn("ignore hidden file or directory %s", d)
+                    continue
                 f = p.submit(down_file_by_range,
                              "http://{}:{}/get".format(host, port), outpath, d)
                 features.append(f)
