@@ -22,7 +22,7 @@ from multiprocessing import cpu_count, current_process, get_logger, Pool
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait
 
 from tqdm import tqdm
-from aiohttp import ClientSession, TCPConnector, ClientTimeout
+from aiohttp import ClientSession, TCPConnector, ClientTimeout, web, hdrs
 from aiohttp.client_reqrep import ClientRequest
 from aiohttp.client_exceptions import *
 
@@ -51,6 +51,51 @@ class HsyncLog(object):
     @property
     def loger(self):
         return logging.getLogger()
+
+
+class HsyncDecorator(object):
+
+    def check_ipaddres(func):
+        async def wrapper(self, *args, **kwargs):
+            if not self.conf.info.hsyncd.Allowed_host or "*" in self.conf.info.hsyncd.Allowed_host.split():
+                pass
+            else:
+                for ip in split_values(self.conf.info.hsyncd.Allowed_host):
+                    if fnmatch(self.request.remote, ip):
+                        break
+                else:
+                    self.loger.error(
+                        "Ip %s forbidden, only allow %s", self.request.remote, self.conf.info.hsyncd.Allowed_host)
+                    return web.HTTPForbidden()
+            res = await func(self, *args, **kwargs)
+            return res
+        return wrapper
+
+    def check_filepath(func):
+        async def wrapper(self, *args, **kwargs):
+            query = query_parse(self.request)
+            file_path = query.get('path')
+            file_path = os.path.abspath(file_path)
+            if os.path.isfile(file_path):
+                filename = os.path.basename(file_path)
+                for pt in split_values(self.conf.info.hsyncd.Forbidden_file):
+                    pt = pt.strip('"').strip("'").strip().strip(',')
+                    if fnmatch(filename, pt.strip()):
+                        self.loger.error(
+                            "%s file forbidden in %s", file_path, self.conf.info.hsyncd.Forbidden_file)
+                        return web.HTTPForbidden()
+                for ex_dir in split_values(self.conf.info.hsyncd.Forbidden_dir):
+                    ex_dir = ex_dir.strip().strip(',').strip()
+                    if file_path.startswith(ex_dir):
+                        self.loger.error(
+                            "%s file forbidden in %s", file_path, self.conf.info.hsyncd.Forbidden_dir)
+                        return web.HTTPForbidden()
+            else:
+                return web.HTTPForbidden()
+            self.hsync_file_path = file_path
+            res = await func(self, *args, **kwargs)
+            return res
+        return wrapper
 
 
 class KeepAliveClientRequest(ClientRequest):
@@ -137,6 +182,8 @@ def human_size(num):
 
 
 def split_values(s):
+    if s is None:
+        return []
     out = []
     j = ""
     for i in s:
@@ -234,17 +281,6 @@ def loger(logfile=None, level="info", multi=False):
     return logger
 
 
-def addLogHandler(logfile=None):
-    if logfile is None:
-        h = logging.StreamHandler(sys.stdout)
-    else:
-        h = logging.FileHandler(logfile, mode='a+')
-    logger = logging.getLogger()
-    oh = logger.handlers[0]
-    h.setFormatter(oh.formatter)
-    logger.addHandler(h)
-
-
 def mkdir(path):
     if not os.path.isdir(path):
         os.makedirs(path)
@@ -267,6 +303,17 @@ def mkfile(filename, size=0, add=False):
             f.write(b'\x00')
         else:
             pass
+
+
+def addLogHandler(logfile=None):
+    if logfile is None:
+        h = logging.StreamHandler(sys.stdout)
+    else:
+        h = logging.FileHandler(logfile, mode='a+')
+    logger = logging.getLogger()
+    oh = logger.handlers[0]
+    h.setFormatter(oh.formatter)
+    logger.addHandler(h)
 
 
 def restart_with_reloader():

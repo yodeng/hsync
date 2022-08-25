@@ -2,52 +2,30 @@ import os
 import sys
 import asyncio
 
-from aiohttp import web, hdrs
-
 from .utils import *
 from .config import *
 
 
-class Download(web.View, HsyncLog):
-
+class ReloadConf(object):
     conf = Config.LoadConfig()
 
+
+class Download(web.View, HsyncLog, ReloadConf):
+
+    @HsyncDecorator.check_ipaddres
+    @HsyncDecorator.check_filepath
     async def get(self):
-        if not self.conf.info.hsyncd.Allowed_host or "*" in self.conf.info.hsyncd.Allowed_host.split():
-            pass
-        else:
-            if self.request.remote not in split_values(self.conf.info.hsyncd.Allowed_host):
-                return web.HTTPForbidden()
-        query = query_parse(self.request)
-        file_path = query.get('path')
-        file_path = os.path.abspath(file_path)
-        if os.path.isfile(file_path):
-            filename = os.path.basename(file_path)
-            for pt in split_values(self.conf.info.hsyncd.Forbidden_file):
-                pt = pt.strip('"').strip("'").strip().strip(',')
-                if fnmatch(filename, pt.strip()):
-                    self.loger.error(
-                        "%s file forbidden in %s", file_path, self.conf.info.hsyncd.Forbidden_file)
-                    return web.HTTPForbidden()
-            for ex_dir in split_values(self.conf.info.hsyncd.Forbidden_dir):
-                ex_dir = ex_dir.strip().strip(',').strip()
-                if file_path.startswith(ex_dir):
-                    self.loger.error(
-                        "%s file forbidden in %s", file_path, self.conf.info.hsyncd.Forbidden_dir)
-                    return web.HTTPForbidden()
-            response = web.FileResponse(path=file_path,
-                                        headers={
-                                            hdrs.CONTENT_DISPOSITION: 'attachment;filename={}'.format(filename),
-                                            hdrs.CONTENT_TYPE: "application/octet-stream"
-                                        },
-                                        chunk_size=256 * 1024)
-            return response
-        else:
-            return web.HTTPForbidden()
+        return web.FileResponse(path=self.hsync_file_path,
+                                headers={
+                                    hdrs.CONTENT_DISPOSITION: 'attachment;filename={}'.format(os.path.basename(self.hsync_file_path)),
+                                    hdrs.CONTENT_TYPE: "application/octet-stream"
+                                },
+                                chunk_size=256 * 1024)
 
 
-class Listpath(web.View, HsyncLog):
+class Listpath(web.View, HsyncLog, ReloadConf):
 
+    @HsyncDecorator.check_ipaddres
     async def get(self):
         query = query_parse(self.request)
         qpath = query.get('dir')
@@ -91,7 +69,8 @@ def main():
     args, _ = hsyncdArg()
     daemon = HsyncDaemon(args, )
     log = loger(args.log)
-    addLogHandler()
+    if args.log:
+        addLogHandler()
     if 'stop' in sys.argv:
         daemon.stop()
         sys.exit()
