@@ -305,7 +305,12 @@ async def hsync(args, conf):
     n = 0
     while n < int(conf.hsync.Max_timeout_retry):
         listdir = requests.get(
-            "http://{}:{}/lsdir".format(host, port), params={"dir": remote_path}, timeout=int(conf.hsync.Data_timeout)).json()
+            "http://{}:{}/lsdir".format(host, port), params={"dir": remote_path}, timeout=int(conf.hsync.Data_timeout))
+        if listdir.status_code == 403:
+            raise ServerForbidException(
+                "Server forbidden for ip connected")
+        else:
+            listdir = listdir.json()
         if not listdir:
             sys.exit("No such file or directory %s in remote host." %
                      remote_path)
@@ -365,7 +370,12 @@ def hscp(args, conf):
     host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
     listdir = requests.get(
-        "http://{}:{}/lsdir".format(host, port), params={"dir": remote_path}).json()
+        "http://{}:{}/lsdir".format(host, port), params={"dir": remote_path})
+    if listdir.status_code == 403:
+        raise ServerForbidException(
+            "Server forbidden for ip connected")
+    else:
+        listdir = listdir.json()
     if not listdir:
         sys.exit("No such file or directory %s in remote host." % remote_path)
     elif len(listdir) == 1:
