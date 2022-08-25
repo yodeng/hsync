@@ -70,8 +70,9 @@ setup(
     long_description_content_type='text/markdown',
     entry_points={
         'console_scripts': [
-            '%s = %s.%s:main' % (PKG, PKG, PKG),
             'hsyncd = hsync.hsyncd:main',
+            'hscp = %s.%s:hscp_main' % (PKG, PKG),
+            'hsync = %s.%s:hsync_main' % (PKG, PKG),
             'hsync-echo-config = hsync.hsync:echo_config',
         ]
     }

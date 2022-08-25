@@ -173,21 +173,33 @@ def hsyncdArg():
     return parser.parse_known_args()
 
 
-def hscpArg():
+def hsyncArg():
     parser = argparse.ArgumentParser(
         description="hsync for remote file synchronize")
     parser.add_argument("-i", "--input", type=str, required=True,
-                        help='input remote path', metavar="<file>")
+                        help='input remote path', metavar="<str>")
+    parser.add_argument("-host", "--host-ip", dest="Host_ip", type=str,
+                        help='connect host ip, localhost by default', metavar="<str>")
+    parser.add_argument("-p", "--port", dest="Port", type=int,
+                        help='connect port, 10808 by default',  metavar="<int>")
+    parser.add_argument("-o", "--output", type=str,
+                        help="output path", metavar="<str>")
+    return parser.parse_args()
+
+
+def hscpArg():
+    parser = argparse.ArgumentParser(
+        description="hscp for remote file copy")
+    parser.add_argument("-i", "--input", type=str, required=True,
+                        help='input remote path', metavar="<str>")
     parser.add_argument("-host", "--host-ip", dest="Host_ip", type=str,
                         help='connect host ip, localhost by default', metavar="<str>")
     parser.add_argument("-p", "--port", dest="Port", type=int,
                         help='connect port, 10808 by default',  metavar="<int>")
     parser.add_argument("-n", "--num", type=int,
-                        help='max file copy in parallely, only used for hscp mode, 3 by default', default=3, metavar="<int>")
+                        help='max file copy in parallely, 3 by default', default=3, metavar="<int>")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
-    parser.add_argument("--sync", dest="sync", action='store_true',
-                        help="sync mode", default=False)
     return parser.parse_args()
 
 
