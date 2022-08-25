@@ -73,17 +73,15 @@ def main():
         addLogHandler()
     if 'stop' in sys.argv:
         daemon.stop()
-        sys.exit()
     elif 'start' in sys.argv:
         daemon.start()
-        sys.exit()
     elif 'restart' in sys.argv:
         daemon.restart()
-        sys.exit()
-    if args.daemon:
-        daemon.start()
     else:
-        daemon.run()
+        if args.daemon:
+            daemon.start()
+        else:
+            daemon.run()
 
 
 if __name__ == "__main__":
