@@ -279,13 +279,16 @@ def echo_config():
     Config().LoadConfig().PrintConfig()
 
 
-def main():
+def hsync_main():
+    args = hsyncArg()
+    conf = Config.LoadConfig().info
+    asyncio.run(hsync(args, conf))
+
+
+def hscp_main():
     args = hscpArg()
     conf = Config.LoadConfig().info
-    if args.sync:
-        asyncio.run(hsync(args, conf))
-    else:
-        hscp(args, conf)
+    hscp(args, conf)
 
 
 async def hsync(args, conf):
@@ -394,7 +397,3 @@ def hscp(args, conf):
                 log.warn("empty remote directory %s --> %s",
                          d, outpath)
         wait(features, return_when="ALL_COMPLETED")
-
-
-if __name__ == "__main__":
-    main()
