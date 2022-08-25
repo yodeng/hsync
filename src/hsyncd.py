@@ -28,7 +28,7 @@ class Listpath(web.View, HsyncLog, ReloadConf):
     @HsyncDecorator.check_ipaddres
     async def get(self):
         query = query_parse(self.request)
-        qpath = query.get('dir')
+        qpath = query.get('path')
         res = {}
         if os.path.isdir(qpath):
             qpath = os.path.abspath(qpath)

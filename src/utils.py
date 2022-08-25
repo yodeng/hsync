@@ -9,7 +9,6 @@ import socket
 import struct
 import atexit
 import asyncio
-import aioftp
 import argparse
 import functools
 import subprocess
@@ -120,6 +119,7 @@ ReloadException = (
     ServerDisconnectedError,
     OSError,
     ClientPayloadError,
+    # ClientOSError,
 )
 
 
