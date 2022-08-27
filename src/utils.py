@@ -8,6 +8,7 @@ import logging
 import socket
 import struct
 import atexit
+import hashlib
 import asyncio
 import argparse
 import functools
@@ -18,7 +19,7 @@ from fnmatch import fnmatch
 from threading import Thread
 from multiprocessing import cpu_count, current_process, get_logger, Pool
 
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait, as_completed
 
 from tqdm import tqdm
 from aiohttp import ClientSession, TCPConnector, ClientTimeout, web, hdrs
@@ -340,6 +341,24 @@ def autoreloader(main_func, *args, **kwargs):
                 sys.exit(exit_code)
         except KeyboardInterrupt:
             pass
+
+
+def check_md5(filename, size):
+    hm = hashlib.md5()
+    size = int(size)
+    with open(filename, "rb") as fi:
+        cur = 0
+        while True:
+            b = fi.read(10240)
+            if not b:
+                break
+            cur += len(b)
+            if cur > size:
+                hm.update(b[:-(cur-size)])
+                break
+            else:
+                hm.update(b)
+    return filename, hm.hexdigest()
 
 
 class Daemon(HsyncLog):
