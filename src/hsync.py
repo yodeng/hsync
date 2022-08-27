@@ -127,7 +127,7 @@ class DownloadByRange(object):
                 headers["Range"] = 'bytes={0}-{1}'.format(s, e)
                 self.loger.debug(
                     "Start %s %s", asyncio.current_task().get_name(), headers["Range"])
-                async with session.get(self.url, headers=headers, timeout=self.timeout, params=self.extra) as req:
+                async with session.post(self.url, headers=headers, timeout=self.timeout, json=self.extra) as req:
                     with open(self.outfile, 'r+b') as f:
                         f.seek(s, os.SEEK_SET)
                         async for chunk in req.content.iter_chunked(102400):
@@ -139,7 +139,7 @@ class DownloadByRange(object):
                 self.loger.debug(
                     "Finished %s %s", asyncio.current_task().get_name(), headers["Range"])
         else:
-            async with session.get(self.url, timeout=self.datatimeout, params=self.extra) as req:
+            async with session.post(self.url, timeout=self.datatimeout, json=self.extra) as req:
                 if req.status == 403:
                     raise ServerForbidException(
                         "Server forbidden for download %s" % self.extra["path"])
@@ -263,7 +263,7 @@ class Hsync(HsyncLog):
     async def _hync(self, session, pbar=None,  headers={}):
         self.loger.info("Starting async remote file: %s --> %s, size from %s to %s",
                         self.extra["path"], self.outfile, self.from_range, self.end_range)
-        async with session.get(self.url, headers=headers, timeout=self.timeout, params=self.extra) as req:
+        async with session.post(self.url, headers=headers, timeout=self.timeout, json=self.extra) as req:
             if req.status == 403:
                 self.loger.error(
                     "Server forbidden for download %s", self.extra["path"])
@@ -312,8 +312,8 @@ async def hsync(args, conf):
     mtime = {}
     while n < int(conf.hsync.Max_timeout_retry):
         trans_files = {}
-        listdir = requests.get(
-            "http://{}:{}/lsdir".format(host, port), params={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
+        listdir = requests.post(
+            "http://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
         if listdir.status_code == 403:
             raise ServerForbidException(
                 "Server forbidden for ip connected")
@@ -357,11 +357,6 @@ async def hsync(args, conf):
                                     elif mtime[d] != mtime_tmp[d]:
                                         trans_files[d] = s
                             elif current_size < s:
-                                # 隐藏文件需要单独处理，不采用range FileResponse方式
-                                if re.search(r'/\.[^/]+', d):
-                                    log.warn(
-                                        "ignore hidden file or directory %s", d)
-                                    continue
                                 sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
                                              ss=current_size, ts=s, md5=md5_rec, path=d)
                                 tasks.append(sync.run())
@@ -406,8 +401,8 @@ def hscp(args, conf):
     conf.hscp.Port = conf.hscp.Port or conf.hsyncd.Port
     host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
-    listdir = requests.get(
-        "http://{}:{}/lsdir".format(host, port), params={"path": remote_path})
+    listdir = requests.post(
+        "http://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
     if listdir.status_code == 403:
         raise ServerForbidException(
             "Server forbidden for ip connected")
@@ -436,9 +431,6 @@ def hscp(args, conf):
             outpath = os.path.join(local_path, d[len(remote_path)+1:])
             mkdir(os.path.dirname(outpath))
             if s >= 0:
-                if re.search(r'/\.[^/]+', d):  # 隐藏文件需要单独处理，不采用range FileResponse方式
-                    log.warn("ignore hidden file or directory %s", d)
-                    continue
                 f = p.submit(down_file_by_range,
                              "http://{}:{}/get".format(host, port), outpath, d)
                 features.append(f)
