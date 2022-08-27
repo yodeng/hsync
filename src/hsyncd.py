@@ -52,7 +52,6 @@ class Listpath(web.View, HsyncLog, ReloadConf):
         res = {}
         if os.path.isdir(qpath):
             qpath = os.path.abspath(qpath)
-            res[qpath] = (-1, os.path.getmtime(qpath))
             for a, b, c in os.walk(qpath, followlinks=True):
                 for d in b:
                     d = os.path.join(a, d)
@@ -61,6 +60,8 @@ class Listpath(web.View, HsyncLog, ReloadConf):
                 for i in c:
                     f = os.path.join(a, i)
                     res[f] = (os.path.getsize(f), os.path.getmtime(f))
+            if not len(res):
+                res[qpath] = (-1, os.path.getmtime(qpath))
         elif os.path.isfile(qpath):
             qpath = os.path.abspath(qpath)
             res[qpath] = (os.path.getsize(qpath), os.path.getmtime(qpath))
