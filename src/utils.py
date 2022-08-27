@@ -14,6 +14,8 @@ import argparse
 import functools
 import subprocess
 
+import rsa
+
 from copy import deepcopy
 from fnmatch import fnmatch
 from threading import Thread
@@ -423,3 +425,63 @@ class Daemon(HsyncLog):
                 "Daemon hsyncd already running?\n"
             sys.stderr.write(message.format(self.pidfile))
             sys.exit(1)
+
+
+class HsyncKey(object):
+    def __init__(self):
+        self.pubkey = ""
+        self.prikey = ""
+
+    def load_key(self, pubkey_file="", prikey_file=""):
+        if pubkey_file:
+            with open(pubkey_file, "rb") as fi:
+                self.pubkey = rsa.PublicKey.load_pkcs1(fi.read())
+        if prikey_file:
+            with open(prikey_file, "rb") as fi:
+                self.prikey = rsa.PrivateKey.load_pkcs1(fi.read())
+
+    def create_keys(self, keylen=2048):
+        keys = rsa.newkeys(keylen)
+        self.pubkey = keys[0]
+        self.prikey = keys[1]
+
+    def save_key(self, pubkey_file="", prikey_file=""):
+        if pubkey_file:
+            with open(pubkey_file, "wb") as fo:
+                fo.write(self.pubkey.save_pkcs1())
+        if prikey_file:
+            with open(prikey_file, "wb") as fo:
+                fo.write(self.prikey.save_pkcs1())
+
+    def encode(self, msg="", dobase=True):
+        msg = self._tobytes(msg)
+        enmsg = rsa.encrypt(msg, self.pubkey)
+        if dobase:
+            enmsg = base64.b64encode(enmsg)
+        return enmsg.decode()
+
+    def decode(self, enmsg="", dobase=True):
+        if dobase:
+            enmsg = base64.b64decode(enmsg)
+        msg = rsa.decrypt(enmsg, self.prikey)
+        return msg.decode()
+
+    def sign(self, msg="", dobase=True, method="SHA-256"):
+        msg = self._tobytes(msg)
+        sigmsg = rsa.sign(msg, self.prikey, method)
+        if dobase:
+            sigmsg = base64.b64encode(sigmsg)
+        return sigmsg.decode()
+
+    def verify(self, msg="", sigmsg="", dobase=True):
+        msg = self._tobytes(msg)
+        sigmsg = self._tobytes(sigmsg)
+        if dobase:
+            sigmsg = base64.b64decode(sigmsg)
+        return rsa.verify(msg, sigmsg, self.pubkey)
+
+    @staticmethod
+    def _tobytes(s):
+        if isinstance(s, str):
+            return s.encode()
+        return s
