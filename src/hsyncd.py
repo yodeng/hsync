@@ -1,4 +1,5 @@
 import os
+import pdb
 import sys
 import asyncio
 
@@ -23,6 +24,24 @@ class Download(web.View, HsyncLog, ReloadConf):
                                 chunk_size=256 * 1024)
 
 
+class CheckMd5(web.View, HsyncLog, ReloadConf):
+
+    @HsyncDecorator.check_ipaddres
+    async def post(self):
+        data = await self.request.json()
+        query = dict(data)
+        executor = ProcessPoolExecutor(max_workers=min(
+            10, int(self.conf.info.hsyncd.MD5_check_nproc)))
+        tasks = [executor.submit(check_md5, f, size)
+                 for f, size in query.items()]
+        checkout = {}
+        for task in as_completed(tasks):
+            filename, md5 = task.result()
+            checkout[filename] = md5
+        executor.shutdown()
+        return web.json_response(checkout)
+
+
 class Listpath(web.View, HsyncLog, ReloadConf):
 
     @HsyncDecorator.check_ipaddres
@@ -32,19 +51,18 @@ class Listpath(web.View, HsyncLog, ReloadConf):
         res = {}
         if os.path.isdir(qpath):
             qpath = os.path.abspath(qpath)
-            res[qpath] = -1
+            res[qpath] = (-1, os.path.getmtime(qpath))
             for a, b, c in os.walk(qpath, followlinks=True):
                 for d in b:
                     d = os.path.join(a, d)
                     if not os.listdir(d):
-                        res[d] = -1
+                        res[d] = (-1, os.path.getmtime(d))
                 for i in c:
                     f = os.path.join(a, i)
-                    s = os.path.getsize(f)
-                    res[f] = s
+                    res[f] = (os.path.getsize(f), os.path.getmtime(f))
         elif os.path.isfile(qpath):
             qpath = os.path.abspath(qpath)
-            res[qpath] = os.path.getsize(qpath)
+            res[qpath] = (os.path.getsize(qpath), os.path.getmtime(qpath))
         return web.json_response(res)
 
 
@@ -62,6 +80,7 @@ async def init_app():
     app = web.Application()
     app.router.add_view('/get', Download)
     app.router.add_view('/lsdir', Listpath)
+    app.router.add_view('/check', CheckMd5)
     return app
 
 

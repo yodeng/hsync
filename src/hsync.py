@@ -230,7 +230,7 @@ def down_file_by_range(url, outfile, path):
 
 class Hsync(HsyncLog):
 
-    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, **kwargs):
+    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, **kwargs):
         self.conf = Config.LoadConfig().info
         self.url = url
         if outfile:
@@ -245,6 +245,9 @@ class Hsync(HsyncLog):
         self.from_range = ss
         self.quite = kwargs.get("quite", False)
         self.end_range = ts
+        self.md5 = md5
+        if self.extra["path"] not in self.md5:
+            self.md5[self.extra["path"]] = hashlib.md5()
 
     async def run(self):
         self.timeout = ClientTimeout(total=60*60*24, sock_read=2400)
@@ -270,6 +273,7 @@ class Hsync(HsyncLog):
                     if chunk:
                         f.write(chunk)
                         f.flush()
+                        self.md5[self.extra["path"]].update(chunk)
                         pbar.update(len(chunk))
         self.loger.info("Finished async remote file: %s --> %s",
                         self.extra["path"], self.outfile)
@@ -303,14 +307,19 @@ async def hsync(args, conf):
     port = mk_hsync_args(args, conf.hsync, "Port", 10808)
     log = loger(multi=False)
     n = 0
+    md5_rec = {}
+    file_map = {}
+    mtime = {}
     while n < int(conf.hsync.Max_timeout_retry):
+        trans_files = {}
         listdir = requests.get(
             "http://{}:{}/lsdir".format(host, port), params={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
         if listdir.status_code == 403:
             raise ServerForbidException(
                 "Server forbidden for ip connected")
         else:
-            listdir = listdir.json()
+            mtime_tmp = {i: j[1] for i, j in listdir.json().items()}
+            listdir = {i: j[0] for i, j in listdir.json().items()}
         if not listdir:
             sys.exit("No such file or directory %s in remote host." %
                      remote_path)
@@ -340,21 +349,43 @@ async def hsync(args, conf):
                                 if s == 0:
                                     mkfile(outpath, s)
                                 else:
-                                    continue
+                                    file_map[d] = outpath
+                                    if d not in mtime:
+                                        md5 = check_md5(outpath, s)
+                                        md5_rec[d] = md5[1]
+                                        trans_files[d] = s
+                                    elif mtime[d] != mtime_tmp[d]:
+                                        trans_files[d] = s
                             elif current_size < s:
+                                # 隐藏文件需要单独处理，不采用range FileResponse方式
                                 if re.search(r'/\.[^/]+', d):
                                     log.warn(
                                         "ignore hidden file or directory %s", d)
                                     continue
                                 sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
-                                             ss=current_size, ts=s, path=d)
+                                             ss=current_size, ts=s, md5=md5_rec, path=d)
                                 tasks.append(sync.run())
+                                file_map[d] = outpath
+                                trans_files[d] = s+1
                             else:
-                                continue
-                                with open(outpath, "r+b") as fo:
-                                    fo.seek(s, os.SEEK_SET)
-                                    fo.truncate()
+                                os.remove(file_map[d])
+                                md5_rec[d] = hashlib.md5()
+                                sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
+                                             ss=0, ts=s, md5=md5_rec, path=d)
+                                tasks.append(sync.run())
+                                file_map[d] = outpath
+                                trans_files[d] = s+1
                     await asyncio.gather(*tasks)
+                    if len(trans_files):
+                        md5query = trans_files.copy()
+                        checkout = requests.post(
+                            "http://{}:{}/check".format(host, port), json=md5query).json()
+                        for f, md5 in checkout.items():
+                            if md5 != (isinstance(md5_rec[f], str) and md5_rec[f] or md5_rec[f].hexdigest()) or f not in md5query:
+                                log.warn(
+                                    "MD5 check error for %s file, re-hsync", file_map[f])
+                                os.remove(file_map[f])
+                                md5_rec[f] = hashlib.md5()
                 except asyncio.TimeoutError as e:
                     n += 1
                 except ReloadException:
@@ -362,6 +393,7 @@ async def hsync(args, conf):
                 except Exception as e:
                     raise e
         time.sleep(int(conf.hsync.Sync_interval_sec))
+        mtime.update(mtime_tmp)
 
 
 def hscp(args, conf):
@@ -380,7 +412,7 @@ def hscp(args, conf):
         raise ServerForbidException(
             "Server forbidden for ip connected")
     else:
-        listdir = listdir.json()
+        listdir = {i: j[0] for i, j in listdir.json().items()}
     if not listdir:
         sys.exit("No such file or directory %s in remote host." % remote_path)
     elif len(listdir) == 1:
@@ -404,7 +436,7 @@ def hscp(args, conf):
             outpath = os.path.join(local_path, d[len(remote_path)+1:])
             mkdir(os.path.dirname(outpath))
             if s >= 0:
-                if re.search(r'/\.[^/]+', d):
+                if re.search(r'/\.[^/]+', d):  # 隐藏文件需要单独处理，不采用range FileResponse方式
                     log.warn("ignore hidden file or directory %s", d)
                     continue
                 f = p.submit(down_file_by_range,
