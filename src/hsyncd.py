@@ -15,7 +15,7 @@ class Download(web.View, HsyncLog, ReloadConf):
 
     @HsyncDecorator.check_ipaddres
     @HsyncDecorator.check_filepath
-    async def get(self):
+    async def post(self):
         return web.FileResponse(path=self.hsync_file_path,
                                 headers={
                                     hdrs.CONTENT_DISPOSITION: 'attachment;filename={}'.format(os.path.basename(self.hsync_file_path)),
@@ -45,8 +45,9 @@ class CheckMd5(web.View, HsyncLog, ReloadConf):
 class Listpath(web.View, HsyncLog, ReloadConf):
 
     @HsyncDecorator.check_ipaddres
-    async def get(self):
-        query = query_parse(self.request)
+    async def post(self):
+        data = await self.request.json()
+        query = dict(data)
         qpath = query.get('path')
         res = {}
         if os.path.isdir(qpath):

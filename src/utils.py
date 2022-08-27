@@ -73,7 +73,8 @@ class HsyncDecorator(object):
 
     def check_filepath(func):
         async def wrapper(self, *args, **kwargs):
-            query = query_parse(self.request)
+            data = await self.request.json()
+            query = dict(data)
             file_path = query.get('path')
             file_path = os.path.abspath(file_path)
             if os.path.isfile(file_path):
