@@ -86,6 +86,41 @@ async def init_app():
     return app
 
 
+def create_hsync_keys():
+    k = HsyncKey()
+    sys.stdout.write("Generating public/private hsync key pair.\n")
+    sys.stdout.flush()
+    while True:
+        length = ask("Enter hsync key length (2048):",
+                     timeout=60).strip() or 2048
+        try:
+            length = int(length)
+            break
+        except:
+            sys.stdout.write("only int allowed\n")
+            sys.stdout.flush()
+    outdir = ask("Enter directory in which to save the key (%s):" %
+                 HSYNC_DIR, timeout=60) or HSYNC_DIR
+    pubfile = os.path.join(outdir, "hsync.public")
+    prifile = os.path.join(outdir, "hsync.private")
+    if os.path.isfile(pubfile) or os.path.isfile(prifile):
+        while True:
+            cover = ask(
+                "Key files %s or %s exists, cover? y/[n] :" % (pubfile, prifile), timeout=60, default="n")
+            if cover == "n":
+                sys.stdout.write("Cover : No, exit.\n")
+                return
+            elif cover == "y":
+                break
+            else:
+                continue
+    k.create_keys(int(length))
+    mkdir(outdir)
+    k.save_key(pubfile, prifile)
+    sys.stdout.write("Create key file %s and %s success\n" %
+                     (pubfile, prifile))
+
+
 def main():
     args, _ = hsyncdArg()
     daemon = HsyncDaemon(args, )

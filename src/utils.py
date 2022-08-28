@@ -485,3 +485,33 @@ class HsyncKey(object):
         if isinstance(s, str):
             return s.encode()
         return s
+
+
+def interrupt(signum, frame):
+    raise TimeoutException()
+
+
+def _timeout(timeout_secs, func, *args, **kwargs):
+    default_return = kwargs.pop('default_return', "")
+
+    signal.signal(signal.SIGALRM, interrupt)
+    signal.alarm(timeout_secs)
+
+    try:
+        ret = func(*args, **kwargs)
+        signal.alarm(0)
+        return ret
+    except (TimeoutException,  KeyboardInterrupt):
+        return default_return
+
+
+def ask(msg="", timeout=100, default=""):
+    sys.stdout.write(msg)
+    sys.stdout.flush()
+    content = _timeout(timeout, sys.stdin.readline)
+    if not content:
+        sys.stdout.write("\n")
+        sys.stdout.flush()
+    if not content.strip():
+        content = default
+    return content.strip()
