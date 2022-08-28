@@ -71,6 +71,7 @@ setup(
     entry_points={
         'console_scripts': [
             'hsyncd = hsync.hsyncd:main',
+            'hsync-keygen = hsync.hsyncd:create_hsync_keys',
             'hscp = %s.%s:hscp_main' % (PKG, PKG),
             'hsync = %s.%s:hsync_main' % (PKG, PKG),
             'hsync-echo-config = hsync.hsync:echo_config',
