@@ -86,6 +86,7 @@ async def init_app():
     return app
 
 
+@KeyBoardExit
 def create_hsync_keys():
     k = HsyncKey()
     sys.stdout.write("Generating public/private hsync key pair.\n")
@@ -106,9 +107,9 @@ def create_hsync_keys():
     if os.path.isfile(pubfile) or os.path.isfile(prifile):
         while True:
             cover = ask(
-                "Key files %s or %s exists, cover? y/[n] :" % (pubfile, prifile), timeout=60, default="n")
+                "Key files %s or %s exists, overwrite? y/[n] :" % (pubfile, prifile), timeout=60, default="n")
             if cover == "n":
-                sys.stdout.write("Cover : No, exit.\n")
+                sys.stdout.write("Overwrite : No, exit.\n")
                 return
             elif cover == "y":
                 break

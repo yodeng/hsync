@@ -285,6 +285,19 @@ def loger(logfile=None, level="info", multi=False):
     return logger
 
 
+def KeyBoardExit(func):
+    def wrapper(*args, **kwargs):
+        try:
+            res = func(*args, **kwargs)
+            return res
+        except KeyboardInterrupt:
+            sys.stdout.write("\n")
+            sys.exit(signal.SIGINT)
+        except Exception as e:
+            raise e
+    return wrapper
+
+
 def mkdir(path):
     if not os.path.isdir(path):
         os.makedirs(path)
@@ -501,7 +514,7 @@ def _timeout(timeout_secs, func, *args, **kwargs):
         ret = func(*args, **kwargs)
         signal.alarm(0)
         return ret
-    except (TimeoutException,  KeyboardInterrupt):
+    except TimeoutException:
         return default_return
 
 
