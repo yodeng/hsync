@@ -1,5 +1,6 @@
 import os
 import re
+import pdb
 import sys
 import time
 import signal
@@ -24,7 +25,7 @@ from multiprocessing import cpu_count, current_process, get_logger, Pool
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait, as_completed
 
 from tqdm import tqdm
-from aiohttp import ClientSession, TCPConnector, ClientTimeout, web, hdrs
+from aiohttp import ClientSession, TCPConnector, ClientTimeout, web, hdrs, BasicAuth, request
 from aiohttp.client_reqrep import ClientRequest
 from aiohttp.client_exceptions import *
 
@@ -98,6 +99,19 @@ class HsyncDecorator(object):
             self.hsync_file_path = file_path
             res = await func(self, *args, **kwargs)
             return res
+        return wrapper
+
+    def exit_exec(func):
+        async def wrapper(*args, **kwargs):
+            try:
+                res = await func(*args, **kwargs)
+                return res
+            except ServerForbidException as e:
+                sys.exit(e.args[0])
+            except HsyncKeyException as e:
+                sys.exit(e.args[0])
+            except Exception as e:
+                raise e
         return wrapper
 
 
@@ -174,6 +188,10 @@ class TimeoutException(Exception):
 
 
 class ServerForbidException(Exception):
+    pass
+
+
+class HsyncKeyException(Exception):
     pass
 
 
@@ -448,10 +466,14 @@ class HsyncKey(object):
 
     def load_key(self, pubkey_file="", prikey_file=""):
         if pubkey_file:
+            if not os.path.isfile(pubkey_file):
+                raise HsyncKeyException("%s not exists" % pubkey_file)
             with open(pubkey_file, "rb") as fi:
                 der = rsa.pem.load_pem(fi.read(), self.marker("public"))
                 self.pubkey = rsa.PublicKey._load_pkcs1_der(der)
         if prikey_file:
+            if not os.path.isfile(prikey_file):
+                raise HsyncKeyException("%s not exists" % prikey_file)
             with open(prikey_file, "rb") as fi:
                 der = rsa.pem.load_pem(fi.read(), self.marker("private"))
                 self.prikey = rsa.PrivateKey._load_pkcs1_der(der)
@@ -483,13 +505,13 @@ class HsyncKey(object):
         enmsg = rsa.encrypt(msg, self.pubkey)
         if dobase:
             enmsg = base64.b64encode(enmsg)
-        return enmsg.decode()
+        return enmsg
 
     def decode(self, enmsg="", dobase=True):
         if dobase:
             enmsg = base64.b64decode(enmsg)
         msg = rsa.decrypt(enmsg, self.prikey)
-        return msg.decode()
+        return msg
 
     def sign(self, msg="", dobase=True, method="SHA-256"):
         msg = self._tobytes(msg)
@@ -540,3 +562,61 @@ def ask(msg="", timeout=100, default=""):
     if not content.strip():
         content = default
     return content.strip()
+
+
+@web.middleware
+class HsyncAuthMiddleware(object):
+
+    def __init__(self, force=True):
+        self.force = force
+
+    async def authenticate(self, request):
+        js = await request.json()
+        if "key" not in js:
+            return False
+        enc = js["key"]
+        k = HsyncKey()
+        try:
+            k.load_key(prikey_file=os.path.join(HSYNC_DIR, "hsync.private"))
+            key = k.decode(enc)
+            if len(key) != 50:
+                return False
+            return True
+        except:
+            return False
+
+    def check_fail(self):
+        return web.Response(
+            body=b'',
+            status=401,
+            reason='UNAUTHORIZED',
+        )
+
+    def required(self, handler):
+        @functools.wraps(handler)
+        async def wrapper(*args):
+            request = None
+            for arg in args:
+                if isinstance(arg, web.View):
+                    request = arg.request
+                if isinstance(arg, web.Request):
+                    request = arg
+
+            if request is None:
+                raise ValueError('Request argument not found for handler')
+
+            if await self.authenticate(request):
+                return await handler(*args)
+            else:
+                return self.check_fail()
+
+        return wrapper
+
+    async def __call__(self, request, handler):
+        if not self.force:
+            return await handler(request)
+        else:
+            if await self.authenticate(request):
+                return await handler(request)
+            else:
+                return self.check_fail()

@@ -30,6 +30,8 @@ class CheckMd5(web.View, HsyncLog, ReloadConf):
     async def post(self):
         data = await self.request.json()
         query = dict(data)
+        if "key" in query:
+            query.pop("key")
         executor = ProcessPoolExecutor(max_workers=min(
             10, int(self.conf.info.hsyncd.MD5_check_nproc)))
         tasks = [executor.submit(check_md5, f, size)
@@ -75,11 +77,15 @@ class HsyncDaemon(Daemon):
         h = mk_hsync_args(self.args, conf.hsyncd, "Host_ip", "0.0.0.0")
         p = mk_hsync_args(self.args, conf.hsyncd, "Port", 10808)
         self.loger.info("hsyncd server start: %s:%s", h, p)
-        web.run_app(app=init_app(), host=h, port=int(p))
+        web.run_app(app=init_app(conf), host=h, port=int(p))
 
 
-async def init_app():
-    app = web.Application()
+async def init_app(conf):
+    if conf.hsyncd.Hsync_authorization == "yes":
+        auth = HsyncAuthMiddleware()
+        app = web.Application(middlewares=[auth])
+    else:
+        app = web.Application()
     app.router.add_view('/get', Download)
     app.router.add_view('/lsdir', Listpath)
     app.router.add_view('/check', CheckMd5)

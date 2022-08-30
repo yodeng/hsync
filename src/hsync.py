@@ -220,11 +220,12 @@ class DownloadByRange(object):
         return res
 
 
-def down_file_by_range(url, outfile, path):
+def down_file_by_range(url="", outfile="", path="", key=""):
     d = DownloadByRange(
         url=url,
         outfile=outfile,
-        path=path)
+        path=path,
+        key=key)
     d.run()
 
 
@@ -268,6 +269,9 @@ class Hsync(HsyncLog):
                 self.loger.error(
                     "Server forbidden for download %s", self.extra["path"])
                 return
+            elif req.status == 401:
+                self.loger.error("HsyncKeyError")
+                return
             with open(self.outfile, self.from_range and 'ab' or "wb") as f:
                 async for chunk in req.content.iter_chunked(10240):
                     if chunk:
@@ -277,6 +281,19 @@ class Hsync(HsyncLog):
                         pbar.update(len(chunk))
         self.loger.info("Finished async remote file: %s --> %s",
                         self.extra["path"], self.outfile)
+
+
+@HsyncDecorator.exit_exec
+async def make_request(method="", url="", json=None, timeout=30, auth=None):
+    timeout = ClientTimeout(total=timeout)
+    async with request(method, url, json=json, auth=auth, timeout=timeout) as req:
+        if req.status == 403:
+            raise ServerForbidException(
+                "Server forbidden for connected")
+        elif req.status == 401:
+            raise HsyncKeyException("HsyncKey Checkout Error")
+        res = await req.json()
+        return res
 
 
 def echo_config():
@@ -310,16 +327,17 @@ async def hsync(args, conf):
     md5_rec = {}
     file_map = {}
     mtime = {}
+    try:
+        k = HsyncKey()
+        k.load_key(pubkey_file=os.path.join(HSYNC_DIR, "hsync.public"))
+        hsync_key = k.encode(os.urandom(50)).decode()
+    except:
+        hsync_key = ""
     while n < int(conf.hsync.Max_timeout_retry):
         trans_files = {}
-        listdir = requests.post(
-            "http://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
-        if listdir.status_code == 403:
-            raise ServerForbidException(
-                "Server forbidden for ip connected")
-        else:
-            mtime_tmp = {i: j[1] for i, j in listdir.json().items()}
-            listdir = {i: j[0] for i, j in listdir.json().items()}
+        listdir = await make_request("POST", "http://{}:{}/lsdir".format(host, port), json={"path": remote_path, "key": hsync_key}, timeout=int(conf.hsync.Data_timeout))
+        mtime_tmp = {i: j[1] for i, j in listdir.items()}
+        listdir = {i: j[0] for i, j in listdir.items()}
         if not listdir:
             sys.exit("No such file or directory %s in remote host." %
                      remote_path)
@@ -358,7 +376,7 @@ async def hsync(args, conf):
                                         trans_files[d] = s
                             elif current_size < s:
                                 sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
-                                             ss=current_size, ts=s, md5=md5_rec, path=d)
+                                             ss=current_size, ts=s, md5=md5_rec, path=d, key=hsync_key)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
@@ -366,15 +384,16 @@ async def hsync(args, conf):
                                 os.remove(file_map[d])
                                 md5_rec[d] = hashlib.md5()
                                 sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
-                                             ss=0, ts=s, md5=md5_rec, path=d)
+                                             ss=0, ts=s, md5=md5_rec, path=d, key=hsync_key)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
                     await asyncio.gather(*tasks)
                     if len(trans_files):
                         md5query = trans_files.copy()
-                        checkout = requests.post(
-                            "http://{}:{}/check".format(host, port), json=md5query).json()
+                        md5query["key"] = hsync_key
+                        checkout = await make_request(method="POST",
+                                                      url="http://{}:{}/check".format(host, port), json=md5query, timeout=int(conf.hsync.Data_timeout))
                         for f, md5 in checkout.items():
                             if md5 != (isinstance(md5_rec[f], str) and md5_rec[f] or md5_rec[f].hexdigest()) or f not in md5query:
                                 log.warn(
@@ -401,11 +420,19 @@ def hscp(args, conf):
     conf.hscp.Port = conf.hscp.Port or conf.hsyncd.Port
     host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
+    try:
+        k = HsyncKey()
+        k.load_key(pubkey_file=os.path.join(HSYNC_DIR, "hsync.public"))
+        hsync_key = k.encode(os.urandom(50)).decode()
+    except:
+        hsync_key = ""
     listdir = requests.post(
-        "http://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout))
+        "http://{}:{}/lsdir".format(host, port), json={"path": remote_path, "key": hsync_key}, timeout=int(conf.hsync.Data_timeout))
     if listdir.status_code == 403:
         raise ServerForbidException(
-            "Server forbidden for ip connected")
+            "Server forbidden for connected")
+    elif listdir.status_code == 401:
+        raise HsyncKeyException("HsyncKey Checkout Error")
     else:
         listdir = {i: j[0] for i, j in listdir.json().items()}
     if not listdir:
@@ -421,7 +448,7 @@ def hscp(args, conf):
         else:
             mkdir(os.path.dirname(local_path))
             df = down_file_by_range(
-                "http://{}:{}/get".format(host, port), outfile=local_path, path=d)
+                "http://{}:{}/get".format(host, port), outfile=local_path, path=d, key=hsync_key)
     else:
         log = loger(multi=True)
         mkdir(local_path)
@@ -432,7 +459,7 @@ def hscp(args, conf):
             mkdir(os.path.dirname(outpath))
             if s >= 0:
                 f = p.submit(down_file_by_range,
-                             "http://{}:{}/get".format(host, port), outpath, d)
+                             "http://{}:{}/get".format(host, port), outpath, d, hsync_key)
                 features.append(f)
             elif s < 0:
                 mkdir(outpath)
