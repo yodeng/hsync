@@ -92,7 +92,7 @@ class DownloadByRange(object):
         self.timeout = ClientTimeout(total=60*60*24, sock_read=2400)
         self.connector = TCPConnector(
             limit=self.tcp_conn, ssl=False)
-        async with ClientSession(connector=self.connector, timeout=self.timeout) as session:
+        async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
             await self.get_range(session)
             if self.content_length < 1:
                 return
@@ -253,7 +253,7 @@ class Hsync(HsyncLog):
         self.timeout = ClientTimeout(total=60*60*24, sock_read=2400)
         self.connector = TCPConnector(
             limit=self.tcp_conn, ssl=False)
-        async with ClientSession(connector=self.connector, timeout=self.timeout) as session:
+        async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
             self.headers["Range"] = "bytes={}-{}".format(
                 self.from_range, self.end_range)
             with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True) as bar:
