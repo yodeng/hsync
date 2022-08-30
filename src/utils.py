@@ -444,14 +444,17 @@ class HsyncKey(object):
     def __init__(self):
         self.pubkey = ""
         self.prikey = ""
+        self.marker = lambda x: "HSYNC %s KEY" % (x.upper())
 
     def load_key(self, pubkey_file="", prikey_file=""):
         if pubkey_file:
             with open(pubkey_file, "rb") as fi:
-                self.pubkey = rsa.PublicKey.load_pkcs1(fi.read())
+                der = rsa.pem.load_pem(fi.read(), self.marker("public"))
+                self.pubkey = rsa.PublicKey._load_pkcs1_der(der)
         if prikey_file:
             with open(prikey_file, "rb") as fi:
-                self.prikey = rsa.PrivateKey.load_pkcs1(fi.read())
+                der = rsa.pem.load_pem(fi.read(), self.marker("private"))
+                self.prikey = rsa.PrivateKey._load_pkcs1_der(der)
 
     def create_keys(self, keylen=2048):
         keys = rsa.newkeys(keylen)
@@ -459,12 +462,21 @@ class HsyncKey(object):
         self.prikey = keys[1]
 
     def save_key(self, pubkey_file="", prikey_file=""):
+        pub, pri = self.get_keystring
         if pubkey_file:
-            with open(pubkey_file, "wb") as fo:
-                fo.write(self.pubkey.save_pkcs1())
+            with open(pubkey_file, "w") as fo:
+                fo.write(pub)
         if prikey_file:
-            with open(prikey_file, "wb") as fo:
-                fo.write(self.prikey.save_pkcs1())
+            with open(prikey_file, "w") as fo:
+                fo.write(pri)
+
+    @property
+    def get_keystring(self):
+        pub = rsa.pem.save_pem(
+            self.pubkey._save_pkcs1_der(), self.marker("public"))
+        pri = rsa.pem.save_pem(
+            self.prikey._save_pkcs1_der(), self.marker("private"))
+        return pub.decode(), pri.decode()
 
     def encode(self, msg="", dobase=True):
         msg = self._tobytes(msg)
