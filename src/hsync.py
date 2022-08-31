@@ -4,8 +4,6 @@ import os
 import sys
 import _thread
 
-import requests
-
 from .utils import *
 from .config import *
 
@@ -35,6 +33,7 @@ class DownloadByRange(object):
         self.quite = quite
         self.extra = kwargs
         self.ftp = False
+        self.ssl = SSLCONTEXT
         self.startime = int(time.time())
         self.current = current_process()
 
@@ -91,7 +90,7 @@ class DownloadByRange(object):
     async def download(self):
         self.timeout = ClientTimeout(total=60*60*24, sock_read=2400)
         self.connector = TCPConnector(
-            limit=self.tcp_conn, ssl=False)
+            limit=self.tcp_conn, ssl=self.ssl)
         async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
             await self.get_range(session)
             if self.content_length < 1:
@@ -220,18 +219,18 @@ class DownloadByRange(object):
         return res
 
 
-def down_file_by_range(url="", outfile="", path="", key=""):
+def down_file_by_range(url="", outfile="", path=""):
     d = DownloadByRange(
         url=url,
         outfile=outfile,
         path=path,
-        key=key)
+    )
     d.run()
 
 
 class Hsync(HsyncLog):
 
-    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, **kwargs):
+    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, ssl=False, **kwargs):
         self.conf = Config.LoadConfig().info
         self.url = url
         if outfile:
@@ -247,13 +246,14 @@ class Hsync(HsyncLog):
         self.quite = kwargs.get("quite", False)
         self.end_range = ts
         self.md5 = md5
+        self.ssl = ssl
         if self.extra["path"] not in self.md5:
             self.md5[self.extra["path"]] = hashlib.md5()
 
     async def run(self):
         self.timeout = ClientTimeout(total=60*60*24, sock_read=2400)
         self.connector = TCPConnector(
-            limit=self.tcp_conn, ssl=False)
+            limit=self.tcp_conn, ssl=self.ssl)
         async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
             self.headers["Range"] = "bytes={}-{}".format(
                 self.from_range, self.end_range)
@@ -284,16 +284,25 @@ class Hsync(HsyncLog):
 
 
 @HsyncDecorator.exit_exec
-async def make_request(method="", url="", json=None, timeout=30, auth=None):
-    timeout = ClientTimeout(total=timeout)
-    async with request(method, url, json=json, auth=auth, timeout=timeout) as req:
-        if req.status == 403:
-            raise ServerForbidException(
-                "Server forbidden for connected")
-        elif req.status == 401:
-            raise HsyncKeyException("HsyncKey Checkout Error")
-        res = await req.json()
-        return res
+async def make_request(method="", url="", json=None, timeout=30, auth=None, ssl=False):
+    async with TCPConnector(ssl=ssl) as connector:
+        timeout = ClientTimeout(total=timeout)
+        async with request(method, url, json=json, auth=auth, timeout=timeout, connector=connector) as req:
+            if req.status == 403:
+                raise ServerForbidException(
+                    "Server forbidden for connected")
+            elif req.status == 401:
+                raise HsyncKeyException("HsyncKey Checkout Error")
+            res = await req.json()
+            return res
+
+
+def requests_(method="", url="", json=None, timeout=30, auth=None, ssl=False):
+    loop = asyncio.get_event_loop()
+    get_future = asyncio.ensure_future(make_request(
+        method=method, url=url, json=json, timeout=timeout, auth=auth, ssl=ssl))
+    loop.run_until_complete(get_future)
+    return get_future.result()
 
 
 def echo_config():
@@ -327,15 +336,9 @@ async def hsync(args, conf):
     md5_rec = {}
     file_map = {}
     mtime = {}
-    try:
-        k = HsyncKey()
-        k.load_key(pubkey_file=os.path.join(HSYNC_DIR, "hsync.public"))
-        hsync_key = k.encode(os.urandom(50)).decode()
-    except:
-        hsync_key = ""
     while n < int(conf.hsync.Max_timeout_retry):
         trans_files = {}
-        listdir = await make_request("POST", "http://{}:{}/lsdir".format(host, port), json={"path": remote_path, "key": hsync_key}, timeout=int(conf.hsync.Data_timeout))
+        listdir = await make_request("POST", "https://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
         mtime_tmp = {i: j[1] for i, j in listdir.items()}
         listdir = {i: j[0] for i, j in listdir.items()}
         if not listdir:
@@ -344,8 +347,6 @@ async def hsync(args, conf):
         else:
             if len(listdir) == 1 and list(listdir.values())[0] < 0:
                 mkdir(local_path)
-                log.warn("empty remote directory %s --> %s",
-                         remote_path, local_path)
             else:
                 tasks = []
                 try:
@@ -357,8 +358,6 @@ async def hsync(args, conf):
                                 local_path, d[len(remote_path)+1:])
                         if s < 0:
                             mkdir(outpath)
-                            log.warn("empty remote directory %s --> %s",
-                                     d, outpath)
                         else:
                             mkdir(os.path.dirname(outpath))
                             current_size = os.path.isfile(
@@ -375,25 +374,24 @@ async def hsync(args, conf):
                                     elif mtime[d] != mtime_tmp[d]:
                                         trans_files[d] = s
                             elif current_size < s:
-                                sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
-                                             ss=current_size, ts=s, md5=md5_rec, path=d, key=hsync_key)
+                                sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
+                                             ss=current_size, ts=s, md5=md5_rec, path=d)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
                             else:
                                 os.remove(file_map[d])
                                 md5_rec[d] = hashlib.md5()
-                                sync = Hsync(url="http://{}:{}/get".format(host, port), outfile=outpath,
-                                             ss=0, ts=s, md5=md5_rec, path=d, key=hsync_key)
+                                sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
+                                             ss=0, ts=s, md5=md5_rec, path=d)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
                     await asyncio.gather(*tasks)
                     if len(trans_files):
                         md5query = trans_files.copy()
-                        md5query["key"] = hsync_key
-                        checkout = await make_request(method="POST",
-                                                      url="http://{}:{}/check".format(host, port), json=md5query, timeout=int(conf.hsync.Data_timeout))
+                        checkout = await make_request(method="POST", ssl=SSLCONTEXT,
+                                                      url="https://{}:{}/check".format(host, port), json=md5query, timeout=int(conf.hsync.Data_timeout))
                         for f, md5 in checkout.items():
                             if md5 != (isinstance(md5_rec[f], str) and md5_rec[f] or md5_rec[f].hexdigest()) or f not in md5query:
                                 log.warn(
@@ -420,21 +418,9 @@ def hscp(args, conf):
     conf.hscp.Port = conf.hscp.Port or conf.hsyncd.Port
     host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
-    try:
-        k = HsyncKey()
-        k.load_key(pubkey_file=os.path.join(HSYNC_DIR, "hsync.public"))
-        hsync_key = k.encode(os.urandom(50)).decode()
-    except:
-        hsync_key = ""
-    listdir = requests.post(
-        "http://{}:{}/lsdir".format(host, port), json={"path": remote_path, "key": hsync_key}, timeout=int(conf.hsync.Data_timeout))
-    if listdir.status_code == 403:
-        raise ServerForbidException(
-            "Server forbidden for connected")
-    elif listdir.status_code == 401:
-        raise HsyncKeyException("HsyncKey Checkout Error")
-    else:
-        listdir = {i: j[0] for i, j in listdir.json().items()}
+    listdir = requests_("POST", "https://{}:{}/lsdir".format(host, port), json={
+        "path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
+    listdir = {i: j[0] for i, j in listdir.items()}
     if not listdir:
         sys.exit("No such file or directory %s in remote host." % remote_path)
     elif len(listdir) == 1:
@@ -443,12 +429,10 @@ def hscp(args, conf):
         s = listdir[d]
         if s < 0:
             mkdir(local_path)
-            log.warn("empty remote directory %s --> %s",
-                     remote_path, local_path)
         else:
             mkdir(os.path.dirname(local_path))
             df = down_file_by_range(
-                "http://{}:{}/get".format(host, port), outfile=local_path, path=d, key=hsync_key)
+                "https://{}:{}/get".format(host, port), outfile=local_path, path=d)
     else:
         log = loger(multi=True)
         mkdir(local_path)
@@ -459,10 +443,8 @@ def hscp(args, conf):
             mkdir(os.path.dirname(outpath))
             if s >= 0:
                 f = p.submit(down_file_by_range,
-                             "http://{}:{}/get".format(host, port), outpath, d, hsync_key)
+                             "https://{}:{}/get".format(host, port), outpath, d)
                 features.append(f)
             elif s < 0:
                 mkdir(outpath)
-                log.warn("empty remote directory %s --> %s",
-                         d, outpath)
         wait(features, return_when="ALL_COMPLETED")
