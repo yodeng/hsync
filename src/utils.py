@@ -1,6 +1,6 @@
 import os
 import re
-import pdb
+import ssl
 import sys
 import time
 import signal
@@ -14,8 +14,6 @@ import asyncio
 import argparse
 import functools
 import subprocess
-
-import rsa
 
 from copy import deepcopy
 from fnmatch import fnmatch
@@ -458,82 +456,6 @@ class Daemon(HsyncLog):
             sys.exit(1)
 
 
-class HsyncKey(object):
-    def __init__(self):
-        self.pubkey = ""
-        self.prikey = ""
-        self.marker = lambda x: "HSYNC %s KEY" % (x.upper())
-
-    def load_key(self, pubkey_file="", prikey_file=""):
-        if pubkey_file:
-            if not os.path.isfile(pubkey_file):
-                raise HsyncKeyException("%s not exists" % pubkey_file)
-            with open(pubkey_file, "rb") as fi:
-                der = rsa.pem.load_pem(fi.read(), self.marker("public"))
-                self.pubkey = rsa.PublicKey._load_pkcs1_der(der)
-        if prikey_file:
-            if not os.path.isfile(prikey_file):
-                raise HsyncKeyException("%s not exists" % prikey_file)
-            with open(prikey_file, "rb") as fi:
-                der = rsa.pem.load_pem(fi.read(), self.marker("private"))
-                self.prikey = rsa.PrivateKey._load_pkcs1_der(der)
-
-    def create_keys(self, keylen=2048):
-        keys = rsa.newkeys(keylen)
-        self.pubkey = keys[0]
-        self.prikey = keys[1]
-
-    def save_key(self, pubkey_file="", prikey_file=""):
-        pub, pri = self.get_keystring
-        if pubkey_file:
-            with open(pubkey_file, "w") as fo:
-                fo.write(pub)
-        if prikey_file:
-            with open(prikey_file, "w") as fo:
-                fo.write(pri)
-
-    @property
-    def get_keystring(self):
-        pub = rsa.pem.save_pem(
-            self.pubkey._save_pkcs1_der(), self.marker("public"))
-        pri = rsa.pem.save_pem(
-            self.prikey._save_pkcs1_der(), self.marker("private"))
-        return pub.decode(), pri.decode()
-
-    def encode(self, msg="", dobase=True):
-        msg = self._tobytes(msg)
-        enmsg = rsa.encrypt(msg, self.pubkey)
-        if dobase:
-            enmsg = base64.b64encode(enmsg)
-        return enmsg
-
-    def decode(self, enmsg="", dobase=True):
-        if dobase:
-            enmsg = base64.b64decode(enmsg)
-        msg = rsa.decrypt(enmsg, self.prikey)
-        return msg
-
-    def sign(self, msg="", dobase=True, method="SHA-256"):
-        msg = self._tobytes(msg)
-        sigmsg = rsa.sign(msg, self.prikey, method)
-        if dobase:
-            sigmsg = base64.b64encode(sigmsg)
-        return sigmsg.decode()
-
-    def verify(self, msg="", sigmsg="", dobase=True):
-        msg = self._tobytes(msg)
-        sigmsg = self._tobytes(sigmsg)
-        if dobase:
-            sigmsg = base64.b64decode(sigmsg)
-        return rsa.verify(msg, sigmsg, self.pubkey)
-
-    @staticmethod
-    def _tobytes(s):
-        if isinstance(s, str):
-            return s.encode()
-        return s
-
-
 def interrupt(signum, frame):
     raise TimeoutException()
 
@@ -562,6 +484,23 @@ def ask(msg="", timeout=100, default=""):
     if not content.strip():
         content = default
     return content.strip()
+
+
+def ssl_context():
+    if all([os.path.isfile(os.path.join(HSYNC_DIR, "cert", i)) for i in ["hsync.crt", "hsync.key", "ca.pem"]]):
+        sslcontext = ssl.create_default_context(
+            purpose=ssl.Purpose.SERVER_AUTH,)
+        sslcontext.check_hostname = False
+        sslcontext.load_cert_chain(certfile=os.path.join(
+            HSYNC_DIR, "cert", 'hsync.crt'), keyfile=os.path.join(HSYNC_DIR, "cert", 'hsync.key'))
+        sslcontext.load_verify_locations(
+            cafile=os.path.join(HSYNC_DIR, "cert", 'ca.pem'))
+    else:
+        sslcontext = False
+    return sslcontext
+
+
+SSLCONTEXT = ssl_context()
 
 
 @web.middleware
@@ -620,3 +559,74 @@ class HsyncAuthMiddleware(object):
                 return await handler(request)
             else:
                 return self.check_fail()
+
+
+class HsyncKey(object):
+    def __init__(self, keydir=""):
+        self.cmd = ""
+        self.ca_dir = os.path.abspath(keydir)
+        mkdir(self.ca_dir)
+        self.capem = os.path.join(self.ca_dir, "ca.pem")
+        self.cakey = os.path.join(self.ca_dir, "ca.key")
+        self.serverkeyfile = os.path.join(self.ca_dir, "hsyncd.key")
+        self.servercrtfile = os.path.join(self.ca_dir, "hsyncd.crt")
+        self.clientkeyfile = os.path.join(self.ca_dir, "hsync.key")
+        self.clientcrtfile = os.path.join(self.ca_dir, "hsync.crt")
+
+    def call(self, cmd, run=True):
+        if not run:
+            return
+        with open(os.devnull, "w") as fo:
+            subprocess.check_call(cmd, shell=True, stdout=fo, stderr=fo)
+
+    def create_ca_key(self, length=2048, days=3650):
+        cmd = "openssl genrsa -out %s %s" % (
+            os.path.join(self.ca_dir, "ca.key"), length)
+        cmd += '\nopenssl req -x509 -new -nodes -key %s -days %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=hugo"' % (
+            self.cakey, days, self.capem)
+        self.cmd += cmd
+        self.call(cmd)
+        sys.stdout.write("Create CA files %s and %s success\n" %
+                         (self.capem, self.cakey))
+
+    def create_hsyncd_key(self, length=2048, days=3650):
+        if not os.path.isfile(self.cakey) or not os.path.isfile(self.capem):
+            sys.exit("No CA %s and %s exists" % (self.pem, self.cakey))
+        cmd = "openssl genrsa -out %s %s" % (
+            self.serverkeyfile, length)
+        cmd += '\nopenssl req -new -key %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=0.0.0.0"' % (
+            self.serverkeyfile, os.path.join(self.ca_dir, "hsyncd.csr"))
+        cmd += "\nopenssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %s" % (
+            os.path.join(self.ca_dir, "hsyncd.csr"), self.capem,
+            self.cakey, self.servercrtfile, days)
+        self.cmd += "\n" + cmd
+        self.call(cmd)
+        sys.stdout.write("Create hsyncd key files %s and %s success\n" %
+                         (self.serverkeyfile, self.servercrtfile))
+
+    def create_hsync_key(self, length=2048, days=3650):
+        if not os.path.isfile(self.cakey) or not os.path.isfile(self.capem):
+            sys.exit("No CA %s and %s exists" % (self.pem, self.cakey))
+        cmd = "openssl genrsa -out %s %s" % (
+            self.clientkeyfile, length)
+        cmd += '\nopenssl req -new -key %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=0.0.0.0"' % (
+            self.clientkeyfile, os.path.join(self.ca_dir, "hsync.csr"))
+        cmd += "\nopenssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %s" % (
+            os.path.join(self.ca_dir, "hsync.csr"), self.capem,
+            self.cakey, self.clientcrtfile, days)
+        self.cmd += "\n" + cmd
+        self.call(cmd)
+        sys.stdout.write("Create hsync key files %s and %s success\n" %
+                         (self.clientkeyfile, self.clientcrtfile))
+
+    def rm_tmp(self, p=""):
+        if p:
+            cmd = "rm -fr %s" % p
+        else:
+            cmd = "rm -fr %s %s %s" % (
+                os.path.join(self.ca_dir, "ca.srl"),
+                os.path.join(self.ca_dir, "hsyncd.csr"),
+                os.path.join(self.ca_dir, "hsync.csr")
+            )
+        self.cmd += "\n" + cmd
+        self.call(cmd)

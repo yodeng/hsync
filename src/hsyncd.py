@@ -30,8 +30,6 @@ class CheckMd5(web.View, HsyncLog, ReloadConf):
     async def post(self):
         data = await self.request.json()
         query = dict(data)
-        if "key" in query:
-            query.pop("key")
         executor = ProcessPoolExecutor(max_workers=min(
             10, int(self.conf.info.hsyncd.MD5_check_nproc)))
         tasks = [executor.submit(check_md5, f, size)
@@ -74,18 +72,22 @@ class HsyncDaemon(Daemon):
 
     def run(self):
         conf = Config.LoadConfig().info
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        if conf.hsyncd.Hsync_verify == "yes":
+            ssl_context.verify_mode = ssl.CERT_REQUIRED
+        ssl_context.load_cert_chain(certfile=os.path.join(
+            HSYNC_DIR, "cert", 'hsyncd.crt'), keyfile=os.path.join(HSYNC_DIR, "cert", 'hsyncd.key'))
+        ssl_context.load_verify_locations(
+            cafile=os.path.join(HSYNC_DIR, "cert", 'ca.pem'))
         h = mk_hsync_args(self.args, conf.hsyncd, "Host_ip", "0.0.0.0")
         p = mk_hsync_args(self.args, conf.hsyncd, "Port", 10808)
         self.loger.info("hsyncd server start: %s:%s", h, p)
-        web.run_app(app=init_app(conf), host=h, port=int(p))
+        web.run_app(app=init_app(), host=h,
+                    port=int(p), ssl_context=ssl_context)
 
 
-async def init_app(conf):
-    if conf.hsyncd.Hsync_authorization == "yes":
-        auth = HsyncAuthMiddleware()
-        app = web.Application(middlewares=[auth])
-    else:
-        app = web.Application()
+async def init_app():
+    app = web.Application()
     app.router.add_view('/get', Download)
     app.router.add_view('/lsdir', Listpath)
     app.router.add_view('/check', CheckMd5)
@@ -94,11 +96,10 @@ async def init_app(conf):
 
 @KeyBoardExit
 def create_hsync_keys():
-    k = HsyncKey()
-    sys.stdout.write("Generating public/private hsync key pair.\n")
+    sys.stdout.write("Generating hsyncd/hsync CA key files.\n")
     sys.stdout.flush()
     while True:
-        length = ask("Enter hsync key length (2048):",
+        length = ask("Enter key length (2048):",
                      timeout=60).strip() or 2048
         try:
             length = int(length)
@@ -106,26 +107,64 @@ def create_hsync_keys():
         except:
             sys.stdout.write("only int allowed\n")
             sys.stdout.flush()
-    outdir = ask("Enter directory in which to save the key (%s):" %
-                 HSYNC_DIR, timeout=60) or HSYNC_DIR
-    pubfile = os.path.join(outdir, "hsync.public")
-    prifile = os.path.join(outdir, "hsync.private")
-    if os.path.isfile(pubfile) or os.path.isfile(prifile):
+    while True:
+        days = ask("Enter key effectivate days (3650):",
+                   timeout=60).strip() or 3650
+        try:
+            days = int(days)
+            break
+        except:
+            sys.stdout.write("only int allowed\n")
+            sys.stdout.flush()
+    outdir = ask("Enter directory in which to save the keys (%s):" %
+                 os.path.join(HSYNC_DIR, "cert"), timeout=60) or os.path.join(HSYNC_DIR, "cert")
+    k = HsyncKey(keydir=outdir)
+    mkdir(outdir)
+    if os.path.isfile(k.cakey) and os.path.isfile(k.capem):
+        if not os.path.isfile(k.serverkeyfile) and not os.path.isfile(k.servercrtfile):
+            if not os.path.isfile(k.clientkeyfile) and not os.path.isfile(k.clientcrtfile):
+                k.create_hsync_key(length=int(length), days=days)
+                k.rm_tmp(k.cakey)
+            else:
+                while True:
+                    cover = ask(
+                        "hsync key files %s and %s exists, overwrite? y/[n] :" % (k.clientkeyfile, k.clientcrtfile), timeout=60, default="n")
+                    if cover == "n":
+                        sys.stdout.write("Overwrite : No, exit.\n")
+                        return
+                    elif cover == "y":
+                        break
+                    else:
+                        continue
+                k.create_hsync_key(length=int(length), days=days)
+                k.rm_tmp(k.cakey)
+        else:
+            while True:
+                cover = ask(
+                    "CA files %s and %s exists, overwrite? y/[n] :" % (k.cakey, k.capem), timeout=60, default="n")
+                if cover == "n":
+                    sys.stdout.write("Overwrite : No, exit.\n")
+                    return
+                elif cover == "y":
+                    break
+                else:
+                    continue
+            k.create_ca_key(length=int(length), days=days)
+            k.create_hsyncd_key(length=int(length), days=days)
+    else:
         while True:
             cover = ask(
-                "Key files %s or %s exists, overwrite? y/[n] :" % (pubfile, prifile), timeout=60, default="n")
+                "Create CA files for hsyncd? y/[n] :",  timeout=60, default="n")
             if cover == "n":
-                sys.stdout.write("Overwrite : No, exit.\n")
+                sys.stdout.write("No, exit.\n")
                 return
             elif cover == "y":
                 break
             else:
                 continue
-    k.create_keys(int(length))
-    mkdir(outdir)
-    k.save_key(pubfile, prifile)
-    sys.stdout.write("Create key file %s and %s success\n" %
-                     (pubfile, prifile))
+        k.create_ca_key(length=int(length), days=days)
+        k.create_hsyncd_key(length=int(length), days=days)
+    k.rm_tmp()
 
 
 def main():
