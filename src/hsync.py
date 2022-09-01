@@ -230,7 +230,7 @@ def down_file_by_range(url="", outfile="", path=""):
 
 class Hsync(HsyncLog):
 
-    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, ssl=False, **kwargs):
+    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, ssl=False, sem=None, **kwargs):
         self.conf = Config.LoadConfig().info
         self.url = url
         if outfile:
@@ -247,6 +247,7 @@ class Hsync(HsyncLog):
         self.end_range = ts
         self.md5 = md5
         self.ssl = ssl
+        self.sem = sem
         if self.extra["path"] not in self.md5:
             self.md5[self.extra["path"]] = hashlib.md5()
 
@@ -257,8 +258,8 @@ class Hsync(HsyncLog):
         async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
             self.headers["Range"] = "bytes={}-{}".format(
                 self.from_range, self.end_range)
-            with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True) as bar:
-                async with asyncio.Semaphore(int(self.conf.hsync.Max_tcp_conn)):
+            async with self.sem:
+                with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True) as bar:
                     await self._hync(session, pbar=bar, headers=self.headers)
 
     async def _hync(self, session, pbar=None,  headers={}):
@@ -336,6 +337,7 @@ async def hsync(args, conf):
     md5_rec = {}
     file_map = {}
     mtime = {}
+    sem = asyncio.Semaphore(int(conf.hsync.Max_runing))
     while n < int(conf.hsync.Max_timeout_retry):
         trans_files = {}
         listdir = await make_request("POST", "https://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
@@ -375,7 +377,7 @@ async def hsync(args, conf):
                                         trans_files[d] = s
                             elif current_size < s:
                                 sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
-                                             ss=current_size, ts=s, md5=md5_rec, path=d)
+                                             ss=current_size, ts=s, sem=sem, md5=md5_rec, path=d)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
@@ -383,7 +385,7 @@ async def hsync(args, conf):
                                 os.remove(file_map[d])
                                 md5_rec[d] = hashlib.md5()
                                 sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
-                                             ss=0, ts=s, md5=md5_rec, path=d)
+                                             ss=0, ts=s, md5=md5_rec, sem=sem, path=d)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
