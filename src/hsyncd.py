@@ -120,51 +120,22 @@ def create_hsync_keys():
                  os.path.join(HSYNC_DIR, "cert"), timeout=60) or os.path.join(HSYNC_DIR, "cert")
     k = HsyncKey(keydir=outdir)
     mkdir(outdir)
-    if os.path.isfile(k.cakey) and os.path.isfile(k.capem):
-        if not os.path.isfile(k.serverkeyfile) and not os.path.isfile(k.servercrtfile):
-            if not os.path.isfile(k.clientkeyfile) and not os.path.isfile(k.clientcrtfile):
-                k.create_hsync_key(length=int(length), days=days)
-                k.rm_tmp(k.cakey)
-            else:
-                while True:
-                    cover = ask(
-                        "hsync key files %s and %s exists, overwrite? y/[n] :" % (k.clientkeyfile, k.clientcrtfile), timeout=60, default="n")
-                    if cover == "n":
-                        sys.stdout.write("Overwrite : No, exit.\n")
-                        return
-                    elif cover == "y":
-                        break
-                    else:
-                        continue
-                k.create_hsync_key(length=int(length), days=days)
-                k.rm_tmp(k.cakey)
-        else:
-            while True:
-                cover = ask(
-                    "CA files %s and %s exists, overwrite? y/[n] :" % (k.cakey, k.capem), timeout=60, default="n")
-                if cover == "n":
-                    sys.stdout.write("Overwrite : No, exit.\n")
-                    return
-                elif cover == "y":
-                    break
-                else:
-                    continue
-            k.create_ca_key(length=int(length), days=days)
-            k.create_hsyncd_key(length=int(length), days=days)
+    End = True
+    if not os.path.isfile(k.capem) or not os.path.isfile(k.serverkeyfile) or not os.path.isfile(k.servercrtfile):
+        k.create_keys(length=int(length), days=days)
     else:
-        while True:
+        while End:
             cover = ask(
-                "Create CA files for hsyncd? y/[n] :",  timeout=60, default="n")
+                "Hsyncd/Hsync CA key files, overwrite? y/[n] :", timeout=60, default="n")
             if cover == "n":
-                sys.stdout.write("No, exit.\n")
-                return
-            elif cover == "y":
+                sys.stdout.write("Overwrite : No, exit.\n")
                 break
+            elif cover == "y":
+                End = False
             else:
                 continue
-        k.create_ca_key(length=int(length), days=days)
-        k.create_hsyncd_key(length=int(length), days=days)
-    k.rm_tmp()
+        else:
+            k.create_keys(length=int(length), days=days)
 
 
 def main():
