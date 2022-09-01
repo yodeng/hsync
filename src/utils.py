@@ -619,14 +619,17 @@ class HsyncKey(object):
         sys.stdout.write("Create hsync key files %s and %s success\n" %
                          (self.clientkeyfile, self.clientcrtfile))
 
-    def rm_tmp(self, p=""):
-        if p:
-            cmd = "rm -fr %s" % p
-        else:
-            cmd = "rm -fr %s %s %s" % (
-                os.path.join(self.ca_dir, "ca.srl"),
-                os.path.join(self.ca_dir, "hsyncd.csr"),
-                os.path.join(self.ca_dir, "hsync.csr")
-            )
+    def rm_tmp(self):
+        cmd = "rm -fr %s %s %s" % (
+            os.path.join(self.ca_dir, "ca.srl"),
+            os.path.join(self.ca_dir, "hsyncd.csr"),
+            os.path.join(self.ca_dir, "hsync.csr")
+        )
         self.cmd += "\n" + cmd
         self.call(cmd)
+
+    def create_keys(self, length=2048, days=3650):
+        self.create_ca_key(length=length, days=days)
+        self.create_hsyncd_key(length=length, days=days)
+        self.create_hsync_key(length=length, days=days)
+        self.rm_tmp()

@@ -35,27 +35,21 @@ hsync包括客户端和服务端程序，传输连接采用强SSL认证，使用
 
 ##### 3.1.1 服务端
 
-服务端使用`hsync-keygen`生成根证书，服务端自签名证书文件和私钥文件。
+服务端使用`hsync-keygen`命令生成根证书，服务端证书和授权的客户端证书
 
 证书输出文件夹为：`$HSYNC_DIR/cert/`
 
-一共包括四个文件：`ca.key` , `ca.pem`,  `hsyncd.crt` ,  `hsyncd.key`
+一共包括6个文件：`ca.key`， `ca.pem`， `hsyncd.crt`， `hsyncd.key`，`hsync.crt`， `hsync.key`
 
-将CA证书文件`ca.key`和`ca.pem`拷贝到客户端`$HSYNC_DIR/cert/`文件夹
+将`ca.pem`，`hsync.crt`和`hsync.key`这3个文件拷贝到客户端`$HSYNC_DIR/cert/`目录即可完成客户端授权
+
+不要将服务端其他文件拷贝到客户端
 
 ##### 3.1.2 客户端
 
-客户端根据服务端证书文件，请求客户端证书。需提前将服务端`ca.key`和`ca.pem`证书文件和私钥文件拷贝到`$HSYNC_DIR/cert/`文件夹
+将服务端`ca.pem`，`hsync.crt`和`hsync.key`证书文件拷贝到客户端`$HSYNC_DIR/cert/`文件夹
 
-客户端使用`hsync-keygen`生成客户端证书和私钥文件
-
-证书输出文件夹为：`$HSYNC_DIR/cert/`
-
-新增两个文件：`hsync.crt`  `hsync.key`
-
-客户端有了服务端证书文件和客户端证书，即完成授权，能正常连接服务端。
-
-客户端生成证书后，会自动删除拷贝过来的服务端私钥文件`ca.key`，只保留服务端证书文件。
+客户端有了证书文件，即完成授权，能正常连接服务端。
 
 #### 3.2 服务端启动
 
