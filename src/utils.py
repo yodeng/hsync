@@ -79,6 +79,8 @@ class HsyncDecorator(object):
             file_path = query.get('path')
             file_path = os.path.abspath(file_path)
             if os.path.isfile(file_path):
+                if is_cert(file_path):
+                    return web.HTTPForbidden()
                 filename = os.path.basename(file_path)
                 for pt in split_values(self.conf.info.hsyncd.Forbidden_file):
                     pt = pt.strip('"').strip("'").strip().strip(',')
@@ -501,6 +503,17 @@ def ssl_context():
 
 
 SSLCONTEXT = ssl_context()
+
+
+def is_cert(f):
+    cert_files = [os.path.join("cert", i) for i in [
+        "ca.key", "ca.pem", "hsyncd.crt", "hsyncd.key", "hsync.crt", "hsync.key"]]
+    if os.path.isfile(f):
+        f = os.path.abspath(f)
+        for c in cert_files:
+            if f.endswith(c):
+                return True
+    return False
 
 
 @web.middleware
