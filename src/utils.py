@@ -381,6 +381,14 @@ def autoreloader(main_func, *args, **kwargs):
 def check_md5(filename, size):
     hm = hashlib.md5()
     size = int(size)
+    if size >= os.path.getsize(filename):
+        with open(filename, "rb") as fi:
+            while True:
+                b = fi.read(10240)
+                if not b:
+                    break
+                hm.update(b)
+        return filename, hm.hexdigest()
     with open(filename, "rb") as fi:
         cur = 0
         while True:

@@ -351,20 +351,25 @@ async def hsync(args, conf):
                 mkdir(local_path)
             else:
                 tasks = []
+                p = ProcessPoolExecutor(int(conf.hsync.MD5_check_nproc))
+                md5s = []
+                local2remote = {}
+                for d, s in listdir.items():
+                    outpath = d == remote_path and local_path or os.path.join(
+                        local_path, d[len(remote_path)+1:])
+                    if os.path.isfile(outpath) and os.path.getsize(outpath) == s and s > 0 and d not in mtime:
+                        md5s.append(p.submit(check_md5, outpath, s))
+                        log.info("Hashlib md5 %s file in localhost", outpath)
+                        local2remote[outpath] = d
+                p.shutdown()
+                if len(md5s):
+                    md5_local = {}
+                    for f in md5s:
+                        c = f.result()
+                        md5_local[c[0]] = c[1]
+                        md5_rec[local2remote[c[0]]] = c[1]
+                    log.info("Hashlib md5 files done, %s", md5_local)
                 try:
-                    p = ProcessPoolExecutor(int(conf.hsync.MD5_check_nproc))
-                    md5s = []
-                    local2remote = {}
-                    for d, s in listdir.items():
-                        outpath = d == remote_path and local_path or os.path.join(
-                            local_path, d[len(remote_path)+1:])
-                        if os.path.isfile(outpath) and os.path.getsize(outpath) == s and s > 0 and d not in mtime:
-                            md5s.append(p.submit(check_md5, outpath, s))
-                            local2remote[outpath] = d
-                    p.shutdown()
-                    if len(md5s):
-                        for c in md5s:
-                            md5_rec[local2remote[c[0]]] = c[1]
                     for d, s in listdir.items():
                         if d == remote_path:
                             outpath = local_path
@@ -401,8 +406,11 @@ async def hsync(args, conf):
                     await asyncio.gather(*tasks)
                     if len(trans_files):
                         md5query = trans_files.copy()
+                        log.info("Await remote md5 return: %s",
+                                 list(md5query.keys()))
                         checkout = await make_request(method="POST", ssl=SSLCONTEXT,
                                                       url="https://{}:{}/check".format(host, port), json=md5query, timeout=int(conf.hsync.Data_timeout))
+                        log.info("Remote md5 recived, %s", checkout)
                         for f, md5 in checkout.items():
                             if md5 != (isinstance(md5_rec[f], str) and md5_rec[f] or md5_rec[f].hexdigest()) or f not in md5query:
                                 log.warn(
