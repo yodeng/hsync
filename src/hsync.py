@@ -357,6 +357,8 @@ async def hsync(args, conf):
                 for d, s in listdir.items():
                     outpath = d == remote_path and local_path or os.path.join(
                         local_path, d[len(remote_path)+1:])
+                    if s > 0 and d == remote_path and os.path.isdir(outpath):
+                        outpath = os.path.join(outpath, os.path.basename(d))
                     if os.path.isfile(outpath) and os.path.getsize(outpath) == s and s > 0 and d not in mtime:
                         md5s.append(p.submit(check_md5, outpath, s))
                         log.info("Hashlib md5 %s file in localhost", outpath)
@@ -376,6 +378,9 @@ async def hsync(args, conf):
                         else:
                             outpath = os.path.join(
                                 local_path, d[len(remote_path)+1:])
+                        if s > 0 and d == remote_path and os.path.isdir(outpath):
+                            outpath = os.path.join(
+                                outpath, os.path.basename(d))
                         if s < 0:
                             mkdir(outpath)
                         else:
@@ -409,7 +414,7 @@ async def hsync(args, conf):
                         log.info("Await remote md5 return: %s",
                                  list(md5query.keys()))
                         checkout = await make_request(method="POST", ssl=SSLCONTEXT,
-                                                      url="https://{}:{}/check".format(host, port), json=md5query, timeout=int(conf.hsync.Data_timeout))
+                                                      url="https://{}:{}/check".format(host, port), json=md5query, timeout=3600)
                         log.info("Remote md5 recived, %s", checkout)
                         for f, md5 in checkout.items():
                             if md5 != (isinstance(md5_rec[f], str) and md5_rec[f] or md5_rec[f].hexdigest()) or f not in md5query:
