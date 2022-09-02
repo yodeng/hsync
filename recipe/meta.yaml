@@ -21,6 +21,7 @@ requirements:
     run:
         - requests
         - tqdm
+        - psutil
         - aiohttp
 
 about:
