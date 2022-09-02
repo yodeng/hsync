@@ -9,6 +9,7 @@ import logging
 import socket
 import struct
 import atexit
+import psutil
 import hashlib
 import asyncio
 import argparse
@@ -437,6 +438,9 @@ class Daemon(HsyncLog):
             with open(self.pidfile) as f:
                 pid = int(f.read().strip())
             self._delpid()
+            ps = psutil.Process(pid)
+            for p in ps.children(recursive=True):
+                os.kill(p.pid, signal.SIGTERM)
             os.kill(pid, signal.SIGTERM)
         else:
             raise Exception("Daemon hsyncd is not started")
@@ -446,16 +450,16 @@ class Daemon(HsyncLog):
             os.remove(self.pidfile)
 
     def _check_pid(self):
-        try:
+        if os.path.isfile(self.pidfile):
             with open(self.pidfile, 'r') as pf:
-                pid = int(pf.read().strip())
-        except:
-            pid = None
-        if pid:
-            message = "pidfile {0} already exist. " + \
-                "Daemon hsyncd already running?\n"
-            sys.stderr.write(message.format(self.pidfile))
-            sys.exit(1)
+                pid = pf.read().strip()
+            if os.path.exists(os.path.join("/proc/", pid)):
+                message = "pidfile {0} already exist. " + \
+                    "Daemon hsyncd already running?\n"
+                sys.stderr.write(message.format(self.pidfile))
+                sys.exit(1)
+            else:
+                self._delpid()
 
 
 def interrupt(signum, frame):

@@ -15,6 +15,7 @@
 + Cython
 + requests
 + aiohttp
++ psutil
 + tqdm
 
 ### 2. 安装
