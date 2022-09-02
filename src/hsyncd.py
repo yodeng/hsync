@@ -11,6 +11,13 @@ class ReloadConf(object):
     conf = Config.LoadConfig()
 
 
+class TestConnect(web.View, HsyncLog, ReloadConf):
+
+    @HsyncDecorator.check_ipaddres
+    async def post(self):
+        return web.HTTPForbidden()
+
+
 class Download(web.View, HsyncLog, ReloadConf):
 
     @HsyncDecorator.check_ipaddres
@@ -53,6 +60,8 @@ class Listpath(web.View, HsyncLog, ReloadConf):
         if os.path.isdir(qpath):
             qpath = os.path.abspath(qpath)
             for a, b, c in os.walk(qpath, followlinks=True):
+                if len(res) > 1000:
+                    return web.HTTPForbidden(reason="To many files or dirs under the query path %s" % qpath)
                 for d in b:
                     d = os.path.join(a, d)
                     if not os.listdir(d):
