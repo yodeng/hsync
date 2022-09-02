@@ -352,6 +352,19 @@ async def hsync(args, conf):
             else:
                 tasks = []
                 try:
+                    p = ProcessPoolExecutor(int(conf.hsync.MD5_check_nproc))
+                    md5s = []
+                    local2remote = {}
+                    for d, s in listdir.items():
+                        outpath = d == remote_path and local_path or os.path.join(
+                            local_path, d[len(remote_path)+1:])
+                        if os.path.isfile(outpath) and os.path.getsize(outpath) == s and s > 0 and d not in mtime:
+                            md5s.append(p.submit(check_md5, outpath, s))
+                            local2remote[outpath] = d
+                    p.shutdown()
+                    if len(md5s):
+                        for c in md5s:
+                            md5_rec[local2remote[c[0]]] = c[1]
                     for d, s in listdir.items():
                         if d == remote_path:
                             outpath = local_path
@@ -369,11 +382,7 @@ async def hsync(args, conf):
                                     mkfile(outpath, s)
                                 else:
                                     file_map[d] = outpath
-                                    if d not in mtime:
-                                        md5 = check_md5(outpath, s)
-                                        md5_rec[d] = md5[1]
-                                        trans_files[d] = s
-                                    elif mtime[d] != mtime_tmp[d]:
+                                    if d not in mtime or mtime[d] != mtime_tmp[d]:
                                         trans_files[d] = s
                             elif current_size < s:
                                 sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
