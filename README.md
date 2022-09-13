@@ -210,6 +210,7 @@ Host_ip =                          ## hsyncd服务绑定的主机ip, 不指定�
 Port = 10808                       ## hsyncd服务绑定的主机ip, 不指定则默认为10808，端口不能被防火墙阻止，命令等同于-p/--port参数
 Forbidden_file = *.fa, *.fq        ## 服务端禁止客户端传输的文件规则，多个规则使用空白或逗号分割。
 Forbidden_dir = /etc/              ## 服务端禁止客户端传输的文件夹绝对路径，多个规则使用空白或逗号分割。
+Only_allowed_path =                ## 服务端只允许传输的文件路径，多个规则使用空白或逗号分割。
 Allowed_host =                     ## 服务端允许连接的客户端ip，多个ip使用空白或逗号分割，非指定的ip则不允许连接，不指定表示默认所有ip可连接服务端，会不安全，建议限制ip, 填写时应注意网络状态，如果有负载均衡或proxy服务器，应填实际直接连接的ip
 MD5_check_nproc = 8                ## 服务端数据校验后台进程数
 Hsync_verify = yes                 ## 服务端开启证书验证，yes表示只允许带证书请求，并对证书进行验证，若不为yes, 代表允许无证书请求。
@@ -250,6 +251,7 @@ Available Config:
  - Allowed_host : 
  - Forbidden_dir : /etc/
  - Forbidden_file :
+ - Only_allowed_path :
  - Host_ip : 
  - Port : 10808
  - MD5_check_nproc : 8

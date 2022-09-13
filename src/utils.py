@@ -83,6 +83,15 @@ class HsyncDecorator(object):
                 if is_cert(file_path):
                     return web.HTTPForbidden()
                 filename = os.path.basename(file_path)
+                ap = split_values(
+                    self.conf.info.hsyncd.get("Only_allowed_path"))
+                if ap:
+                    for pt in ap:
+                        pt = os.path.abspath(pt)
+                        if pt in file_path:
+                            break
+                    else:
+                        return web.HTTPForbidden()
                 for pt in split_values(self.conf.info.hsyncd.Forbidden_file):
                     pt = pt.strip('"').strip("'").strip().strip(',')
                     if fnmatch(filename, pt.strip()):
