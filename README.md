@@ -8,7 +8,7 @@
 
 + linux64
 + openssl
-+ python >=3.7
++ python >=3.8
 
 #### 1.2 其他python模块依赖
 
@@ -32,13 +32,15 @@ hsync包括客户端和服务端程序，传输连接采用强SSL认证，使用
 
 对于无证书的请求，拒绝访问，有证书的请求，会对证书进行验证，验证通过允许访问，验证不通过拒绝访问。
 
+服务端也可以通过在配置文件中指定`Hsync_verify = no`启动无连接认证的hsyncd服务。
+
 #### 3.1 创建证书及密钥
 
 ##### 3.1.1 服务端
 
-服务端使用`hsync-keygen`命令生成根证书，服务端证书和授权的客户端证书
+服务端使用`hsync-keygen`命令生成根证书、服务端证书和授权的客户端证书
 
-证书输出文件夹为：`$HSYNC_DIR/cert/`
+证书输出文件夹为：`$HSYNC_DIR/cert/`, `HSYNC_DIR`为系统环境变量，不指定时默认为`$HOME/.hsync`
 
 一共包括6个文件：`ca.key`， `ca.pem`， `hsyncd.crt`， `hsyncd.key`，`hsync.crt`， `hsync.key`
 
