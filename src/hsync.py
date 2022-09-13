@@ -27,6 +27,7 @@ class DownloadByRange(object):
         self.datatimeout = int(self.conf.hscp.Data_timeout)
         self.headers = headers
         self.headers.update(default_headers)
+        self.headers[hdrs.ACCEPT_ENCODING] = ""
         self.offset = {}
         self.range_list = []
         self.tqdm_init = 0
@@ -138,7 +139,9 @@ class DownloadByRange(object):
                 self.loger.debug(
                     "Finished %s %s", asyncio.current_task().get_name(), headers["Range"])
         else:
-            async with session.post(self.url, timeout=self.datatimeout, json=self.extra) as req:
+            headers = default_headers
+            headers[hdrs.ACCEPT_ENCODING] = ""
+            async with session.post(self.url, headers=headers, timeout=self.datatimeout, json=self.extra) as req:
                 if req.status == 403:
                     raise ServerForbidException(
                         "Server forbidden for download %s" % self.extra["path"])
@@ -241,6 +244,7 @@ class Hsync(HsyncLog):
         self.tcp_conn = int(self.conf.hsync.Max_tcp_conn)
         self.headers = headers
         self.headers.update(default_headers)
+        self.headers[hdrs.ACCEPT_ENCODING] = ""
         self.extra = kwargs
         self.from_range = ss
         self.quite = kwargs.get("quite", False)
@@ -259,12 +263,14 @@ class Hsync(HsyncLog):
             self.headers["Range"] = "bytes={}-{}".format(
                 self.from_range, self.end_range)
             async with self.sem:
+                self.loger.info("Starting async remote file: %s --> %s, size from %s to %s",
+                                self.extra["path"], self.outfile, self.from_range, self.end_range)
                 with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True) as bar:
                     await self._hync(session, pbar=bar, headers=self.headers)
+                self.loger.info("Finished async remote file: %s --> %s",
+                                self.extra["path"], self.outfile)
 
     async def _hync(self, session, pbar=None,  headers={}):
-        self.loger.info("Starting async remote file: %s --> %s, size from %s to %s",
-                        self.extra["path"], self.outfile, self.from_range, self.end_range)
         async with session.post(self.url, headers=headers, timeout=self.timeout, json=self.extra) as req:
             if req.status == 403:
                 self.loger.error(
@@ -280,8 +286,6 @@ class Hsync(HsyncLog):
                         f.flush()
                         self.md5[self.extra["path"]].update(chunk)
                         pbar.update(len(chunk))
-        self.loger.info("Finished async remote file: %s --> %s",
-                        self.extra["path"], self.outfile)
 
 
 @HsyncDecorator.exit_exec
