@@ -267,8 +267,6 @@ class Hsync(HsyncLog):
                                 self.extra["path"], self.outfile, self.from_range, self.end_range)
                 with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True) as bar:
                     await self._hync(session, pbar=bar, headers=self.headers)
-                self.loger.info("Finished async remote file: %s --> %s",
-                                self.extra["path"], self.outfile)
 
     async def _hync(self, session, pbar=None,  headers={}):
         async with session.post(self.url, headers=headers, timeout=self.timeout, json=self.extra) as req:
@@ -286,6 +284,8 @@ class Hsync(HsyncLog):
                         f.flush()
                         self.md5[self.extra["path"]].update(chunk)
                         pbar.update(len(chunk))
+            self.loger.info("Finished async remote file: %s --> %s",
+                            self.extra["path"], self.outfile)
 
 
 @HsyncDecorator.exit_exec
@@ -421,6 +421,9 @@ async def hsync(args, conf):
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
                     await asyncio.gather(*tasks)
+                    for d, _ in list(trans_files.items()):
+                        if not os.path.isfile(file_map[d]):
+                            trans_files.pop(d)
                     if len(trans_files):
                         md5query = trans_files.copy()
                         log.info("Await remote md5 return: %s",
