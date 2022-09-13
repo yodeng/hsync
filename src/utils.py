@@ -127,8 +127,9 @@ class KeepAliveClientRequest(ClientRequest):
 
 
 default_headers = {
-    "Connection": "close",
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36',
+    hdrs.CONNECTION: "close",
+    hdrs.CONTENT_TYPE: "application/octet-stream",
+    hdrs.USER_AGENT: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/104.0.0.0 Safari/537.36",
 }
 
 HSYNC_DIR = os.getenv("HSYNC_DIR", False) or os.path.join(
