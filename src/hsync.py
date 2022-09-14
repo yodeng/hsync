@@ -108,7 +108,7 @@ class DownloadByRange(object):
                 pos = self.current._identity[0]-1
             else:
                 pos = None
-            with tqdm(position=pos, disable=self.quite, total=int(self.content_length), initial=self.tqdm_init, unit='', ascii=True, unit_scale=True) as bar:
+            with tqdm(position=pos, disable=self.quite, total=int(self.content_length), initial=self.tqdm_init, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
                 tasks = []
                 for h_range in self.range_list:
                     s, e = h_range["Range"]
@@ -265,7 +265,7 @@ class Hsync(HsyncLog):
             async with self.sem:
                 self.loger.info("Starting async remote file: %s --> %s, size from %s to %s",
                                 self.extra["path"], self.outfile, self.from_range, self.end_range)
-                with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True) as bar:
+                with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
                     await self._hync(session, pbar=bar, headers=self.headers)
 
     async def _hync(self, session, pbar=None,  headers={}):
