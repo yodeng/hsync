@@ -246,7 +246,7 @@ def hsyncdArg():
                         help='hsyncd server host ip, 0.0.0.0 by default', metavar="<str>")
     parser.add_argument("-p", "--port", dest="Port", type=int,
                         help='hsyncd port 10808 by default',  metavar="<int>")
-    parser.add_argument("-l", "--log", type=str,
+    parser.add_argument("-l", "--log", type=str, default=os.path.join(HSYNC_DIR, "hsyncd.log"),
                         help='hsyncd logging file, %s by default' % os.path.join(HSYNC_DIR, "hsyncd.log"),  metavar="<str>")
     parser.add_argument("-d", "--daemon", action='store_true',
                         help="daemon process", default=False)
