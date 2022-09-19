@@ -155,7 +155,7 @@ class DownloadByRange(object):
         Done = False
         try:
             if self.url.startswith("http"):
-                self.loop = asyncio.get_event_loop()
+                self.loop = asyncio.new_event_loop()
                 self.loop.run_until_complete(self.download())
             else:
                 self.loger.error("Only http/https urls allowed.")
@@ -300,14 +300,6 @@ async def make_request(method="", url="", json=None, timeout=30, auth=None, ssl=
                 raise HsyncKeyException("HsyncKey Checkout Error")
             res = await req.json()
             return res
-
-
-def requests_(method="", url="", json=None, timeout=30, auth=None, ssl=False):
-    loop = asyncio.get_event_loop()
-    get_future = asyncio.ensure_future(make_request(
-        method=method, url=url, json=json, timeout=timeout, auth=auth, ssl=ssl))
-    loop.run_until_complete(get_future)
-    return get_future.result()
 
 
 def echo_config():
@@ -457,8 +449,8 @@ def hscp(args, conf):
     conf.hscp.Port = conf.hscp.Port or conf.hsyncd.Port
     host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
-    listdir = requests_("POST", "https://{}:{}/lsdir".format(host, port), json={
-        "path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
+    listdir = asyncio.run(make_request("POST", "https://{}:{}/lsdir".format(host, port), json={
+        "path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT))
     listdir = {i: j[0] for i, j in listdir.items()}
     if not listdir:
         sys.exit("No such file or directory %s in remote host." % remote_path)
