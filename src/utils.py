@@ -206,6 +206,10 @@ class HsyncKeyException(Exception):
     pass
 
 
+class ConfigSectionsError(Exception):
+    '''Config Sections exists'''
+
+
 def human_size(num):
     for unit in ['B', 'K', 'M', 'G', 'T', 'P', 'E', 'Z']:
         if abs(num) < 1024.0:
@@ -248,9 +252,19 @@ def hsyncdArg():
                         help='hsyncd port 10808 by default',  metavar="<int>")
     parser.add_argument("-l", "--log", type=str, default=os.path.join(HSYNC_DIR, "hsyncd.log"),
                         help='hsyncd logging file, %s by default' % os.path.join(HSYNC_DIR, "hsyncd.log"),  metavar="<str>")
+    parser.add_argument("-c", "--config", type=str,
+                        help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
     parser.add_argument("-d", "--daemon", action='store_true',
                         help="daemon process", default=False)
     return parser.parse_known_args()
+
+
+def ShowConfig():
+    parser = argparse.ArgumentParser(
+        description="show hsync config")
+    parser.add_argument("-c", "--config", type=str,
+                        help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
+    return parser.parse_args()
 
 
 def hsyncArg():
@@ -262,6 +276,8 @@ def hsyncArg():
                         help='connect host ip, localhost by default', metavar="<str>")
     parser.add_argument("-p", "--port", dest="Port", type=int,
                         help='connect port, 10808 by default',  metavar="<int>")
+    parser.add_argument("-c", "--config", type=str,
+                        help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
     return parser.parse_args()
@@ -278,6 +294,8 @@ def hscpArg():
                         help='connect port, 10808 by default',  metavar="<int>")
     parser.add_argument("-n", "--num", type=int,
                         help='max file copy in parallely, 3 by default', default=3, metavar="<int>")
+    parser.add_argument("-c", "--config", type=str,
+                        help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
     return parser.parse_args()
@@ -510,21 +528,37 @@ def ask(msg="", timeout=100, default=""):
     return content.strip()
 
 
-def ssl_context():
-    if all([os.path.isfile(os.path.join(HSYNC_DIR, "cert", i)) for i in ["hsync.crt", "hsync.key", "ca.pem"]]):
+def cert_path(config=None, section="hsyncd"):
+    def cert_dir(f): return os.path.join(HSYNC_DIR, "cert", f)
+    section = section.lower()
+    cafile = cert_dir("ca.pem")
+    if section == "hsyncd":
+        certfile = cert_dir("hsyncd.crt")
+        keyfile = cert_dir("hsyncd.key")
+    elif section in ["hsync", "hscp"]:
+        certfile = cert_dir("hsync.crt")
+        keyfile = cert_dir("hsync.key")
+    else:
+        raise ConfigSectionsError("No such section in config" % section)
+    if config:
+        certfile = config[section].Cert_file or certfile
+        keyfile = config[section].Key_file or keyfile
+        cafile = config[section].CA_file or cafile
+    return cafile, certfile, keyfile
+
+
+def ssl_context(config=None, section="hsync"):
+    sslcontext = False
+    if not config:
+        return sslcontext
+    cafile, certfile, keyfile = cert_path(config=config, section=section)
+    if all([os.path.isfile(i) for i in [cafile, certfile, keyfile]]):
         sslcontext = ssl.create_default_context(
             purpose=ssl.Purpose.SERVER_AUTH,)
         sslcontext.check_hostname = False
-        sslcontext.load_cert_chain(certfile=os.path.join(
-            HSYNC_DIR, "cert", 'hsync.crt'), keyfile=os.path.join(HSYNC_DIR, "cert", 'hsync.key'))
-        sslcontext.load_verify_locations(
-            cafile=os.path.join(HSYNC_DIR, "cert", 'ca.pem'))
-    else:
-        sslcontext = False
+        sslcontext.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        sslcontext.load_verify_locations(cafile=cafile)
     return sslcontext
-
-
-SSLCONTEXT = ssl_context()
 
 
 def is_cert(f):

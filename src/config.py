@@ -14,7 +14,7 @@ class Conf(configparser.ConfigParser):
 
 class Dict(dict):
     def __getattr__(self, name):
-        return self[name]
+        return self.get(name)  # fix Key Error
 
     def __setattr__(self, name, value):
         self[name] = value
@@ -40,6 +40,8 @@ class Config(object):
         return self.info.get(section, Dict()).get(name, None)
 
     def update_config(self, config):
+        if config is None:  # update None
+            return
         self.cf.append(config)
         if not os.path.isfile(config):
             return

@@ -10,8 +10,10 @@ from .config import *
 
 class DownloadByRange(object):
 
-    def __init__(self, url="", outfile="", quite=False, headers={}, **kwargs):
-        self.conf = Config.LoadConfig().info
+    def __init__(self, url="", outfile="", quite=False, headers={}, configfile=None, **kwargs):
+        self.conf = Config.LoadConfig()
+        self.conf.update_config(configfile)
+        self.conf = self.conf.info
         self.url = url
         if outfile:
             self.outfile = os.path.abspath(outfile)
@@ -34,7 +36,7 @@ class DownloadByRange(object):
         self.quite = quite
         self.extra = kwargs
         self.ftp = False
-        self.ssl = SSLCONTEXT
+        self.ssl = ssl_context(self.conf, "hscp")
         self.startime = int(time.time())
         self.current = current_process()
 
@@ -157,6 +159,7 @@ class DownloadByRange(object):
             if self.url.startswith("http"):
                 self.loop = asyncio.new_event_loop()
                 self.loop.run_until_complete(self.download())
+                self.loop.close()
             else:
                 self.loger.error("Only http/https urls allowed.")
                 sys.exit(1)
@@ -218,23 +221,23 @@ class DownloadByRange(object):
                 self.loger.debug("Remove %s", os.path.basename(self.rang_file))
             els = int(time.time()) - self.startime
             self.loger.info("Donwload success, time elapse: %s sec", els)
-            sys.exit()
         return res
 
 
-def down_file_by_range(url="", outfile="", path=""):
+def down_file_by_range(url="", outfile="", path="", configfile=None):
     d = DownloadByRange(
         url=url,
         outfile=outfile,
         path=path,
+        configfile=configfile,
     )
     d.run()
 
 
 class Hsync(HsyncLog):
 
-    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, ssl=False, sem=None, **kwargs):
-        self.conf = Config.LoadConfig().info
+    def __init__(self, url="", outfile="", ss=0, ts=None, headers={}, md5={}, ssl=False, sem=None, config=None, **kwargs):
+        self.conf = config
         self.url = url
         if outfile:
             self.outfile = os.path.abspath(outfile)
@@ -303,19 +306,22 @@ async def make_request(method="", url="", json=None, timeout=30, auth=None, ssl=
 
 
 def echo_config():
-    Config().LoadConfig().PrintConfig()
+    args = ShowConfig()
+    conf = Config.LoadConfig()
+    conf.update_config(args.config)
+    conf.PrintConfig()
 
 
 def hsync_main():
     args = hsyncArg()
-    conf = Config.LoadConfig().info
-    asyncio.run(hsync(args, conf))
+    conf = Config.LoadConfig()
+    conf.update_config(args.config)
+    asyncio.run(hsync(args, conf.info))
 
 
 def hscp_main():
     args = hscpArg()
-    conf = Config.LoadConfig().info
-    hscp(args, conf)
+    hscp(args)
 
 
 async def hsync(args, conf):
@@ -334,6 +340,7 @@ async def hsync(args, conf):
     file_map = {}
     mtime = {}
     sem = asyncio.Semaphore(int(conf.hsync.Max_runing))
+    SSLCONTEXT = ssl_context(conf, "hsync")
     while n < int(conf.hsync.Max_timeout_retry):
         trans_files = {}
         listdir = await make_request("POST", "https://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
@@ -400,7 +407,7 @@ async def hsync(args, conf):
                                         trans_files[d] = s
                             elif current_size < s:
                                 sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
-                                             ss=current_size, ts=s, sem=sem, md5=md5_rec, path=d)
+                                             ss=current_size, ts=s, sem=sem, md5=md5_rec, path=d, config=conf)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
@@ -439,16 +446,20 @@ async def hsync(args, conf):
         mtime.update(mtime_tmp)
 
 
-def hscp(args, conf):
+def hscp(args):
     remote_path = os.path.abspath(args.input)
+    conf = Config.LoadConfig()
+    conf.update_config(args.config)
+    conf = conf.info
     if args.output:
         local_path = os.path.abspath(args.output)
     else:
         local_path = os.path.join(os.getcwd(), os.path.basename(remote_path))
     conf.hscp.Host_ip = conf.hscp.Host_ip or conf.hsyncd.Host_ip
     conf.hscp.Port = conf.hscp.Port or conf.hsyncd.Port
-    host = mk_hsync_args(args, conf.hscp, "Host_ip", "0.0.0.0")
+    host = mk_hsync_args(args, conf.hscp, "Host_ip", "127.0.0.1")
     port = mk_hsync_args(args, conf.hscp, "Port", 10808)
+    SSLCONTEXT = ssl_context(conf, "hscp")
     listdir = asyncio.run(make_request("POST", "https://{}:{}/lsdir".format(host, port), json={
         "path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT))
     listdir = {i: j[0] for i, j in listdir.items()}
@@ -463,7 +474,7 @@ def hscp(args, conf):
         else:
             mkdir(os.path.dirname(local_path))
             df = down_file_by_range(
-                "https://{}:{}/get".format(host, port), outfile=local_path, path=d)
+                "https://{}:{}/get".format(host, port), outfile=local_path, path=d, configfile=args.config)
     else:
         log = loger(multi=True)
         mkdir(local_path)
@@ -474,7 +485,7 @@ def hscp(args, conf):
             mkdir(os.path.dirname(outpath))
             if s >= 0:
                 f = p.submit(down_file_by_range,
-                             "https://{}:{}/get".format(host, port), outpath, d)
+                             "https://{}:{}/get".format(host, port), outpath, d, args.config)
                 features.append(f)
             elif s < 0:
                 mkdir(outpath)

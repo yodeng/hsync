@@ -80,14 +80,15 @@ class Listpath(web.View, HsyncLog, ReloadConf):
 class HsyncDaemon(Daemon):
 
     def run(self):
-        conf = Config.LoadConfig().info
+        conf = Config.LoadConfig()
+        conf.update_config(self.args.config)
+        conf = conf.info
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         if conf.hsyncd.Hsync_verify == "yes":
             ssl_context.verify_mode = ssl.CERT_REQUIRED
-        ssl_context.load_cert_chain(certfile=os.path.join(
-            HSYNC_DIR, "cert", 'hsyncd.crt'), keyfile=os.path.join(HSYNC_DIR, "cert", 'hsyncd.key'))
-        ssl_context.load_verify_locations(
-            cafile=os.path.join(HSYNC_DIR, "cert", 'ca.pem'))
+        cafile, certfile, keyfile = cert_path(conf, "hsyncd")
+        ssl_context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+        ssl_context.load_verify_locations(cafile=cafile)
         h = mk_hsync_args(self.args, conf.hsyncd, "Host_ip", "0.0.0.0")
         p = mk_hsync_args(self.args, conf.hsyncd, "Port", 10808)
         self.loger.info("hsyncd server start: %s:%s", h, p)
