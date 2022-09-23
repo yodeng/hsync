@@ -150,6 +150,7 @@ def create_hsync_keys():
 
 def main():
     args, _ = hsyncdArg()
+    ReloadConf.conf.update_config(args.config)
     daemon = HsyncDaemon(args, )
     log = loger(args.log)
     if args.log:
