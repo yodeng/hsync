@@ -651,7 +651,7 @@ class HsyncKey(object):
     def create_ca_key(self, length=2048, days=3650):
         cmd = "openssl genrsa -out %s %s" % (
             os.path.join(self.ca_dir, "ca.key"), length)
-        cmd += '\nopenssl req -x509 -new -nodes -key %s -days %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=hugo"' % (
+        cmd += '\nopenssl req -x509 -new -nodes -key %s -days %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=hugo" -sha256' % (
             self.cakey, days, self.capem)
         self.cmd += cmd
         self.call(cmd)
@@ -663,9 +663,9 @@ class HsyncKey(object):
             sys.exit("No CA %s and %s exists" % (self.pem, self.cakey))
         cmd = "openssl genrsa -out %s %s" % (
             self.serverkeyfile, length)
-        cmd += '\nopenssl req -new -key %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=0.0.0.0"' % (
+        cmd += '\nopenssl req -new -key %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=0.0.0.0" -sha256' % (
             self.serverkeyfile, os.path.join(self.ca_dir, "hsyncd.csr"))
-        cmd += "\nopenssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %s" % (
+        cmd += "\nopenssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %s -sha256" % (
             os.path.join(self.ca_dir, "hsyncd.csr"), self.capem,
             self.cakey, self.servercrtfile, days)
         self.cmd += "\n" + cmd
@@ -678,9 +678,9 @@ class HsyncKey(object):
             sys.exit("No CA %s and %s exists" % (self.pem, self.cakey))
         cmd = "openssl genrsa -out %s %s" % (
             self.clientkeyfile, length)
-        cmd += '\nopenssl req -new -key %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=0.0.0.0"' % (
+        cmd += '\nopenssl req -new -key %s -out %s -subj "/C=CN/ST=SC/L=CD/O=XY/OU=FF/CN=0.0.0.0" -sha256' % (
             self.clientkeyfile, os.path.join(self.ca_dir, "hsync.csr"))
-        cmd += "\nopenssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %s" % (
+        cmd += "\nopenssl x509 -req -in %s -CA %s -CAkey %s -CAcreateserial -out %s -days %s -sha256" % (
             os.path.join(self.ca_dir, "hsync.csr"), self.capem,
             self.cakey, self.clientcrtfile, days)
         self.cmd += "\n" + cmd

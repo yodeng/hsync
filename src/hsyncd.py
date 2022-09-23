@@ -136,7 +136,7 @@ def create_hsync_keys():
     else:
         while End:
             cover = ask(
-                "Hsyncd/Hsync CA key files, overwrite? y/[n] :", timeout=60, default="n")
+                "Hsyncd/Hsync CA key files exists, overwrite? y/[n] :", timeout=60, default="n")
             if cover == "n":
                 sys.stdout.write("Overwrite : No, exit.\n")
                 break
