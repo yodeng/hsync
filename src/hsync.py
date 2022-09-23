@@ -297,8 +297,12 @@ async def make_request(method="", url="", json=None, timeout=30, auth=None, ssl=
         timeout = ClientTimeout(total=timeout)
         async with request(method, url, json=json, auth=auth, timeout=timeout, connector=connector) as req:
             if req.status == 403:
-                raise ServerForbidException(
-                    "Server forbidden for connected")
+                if "path" in json:
+                    raise ServerForbidException(
+                        "Server forbidden for connected because path (%s) do not allow by host" % json['path'])
+                else:
+                    raise ServerForbidException(
+                        "Server forbidden for connected")
             elif req.status == 401:
                 raise HsyncKeyException("HsyncKey Checkout Error")
             res = await req.json()

@@ -52,6 +52,7 @@ class CheckMd5(web.View, HsyncLog, ReloadConf):
 class Listpath(web.View, HsyncLog, ReloadConf):
 
     @HsyncDecorator.check_ipaddres
+    @HsyncDecorator.check_filepath
     async def post(self):
         data = await self.request.json()
         query = dict(data)
