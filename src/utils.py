@@ -296,6 +296,8 @@ def hsyncArg():
                         help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
     parser.add_argument("--from-now", action="store_true", default=False,
                         help="skip exists files or directorys and start hsync from new changes")
+    parser.add_argument("--no-md5", action="store_true", default=False,
+                        help="do not md5 check for hsync")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
     return parser.parse_args()
