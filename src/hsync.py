@@ -370,7 +370,7 @@ async def hsync(args, conf):
                         local_path, d[len(remote_path)+1:])
                     if s > 0 and d == remote_path and os.path.isdir(outpath):
                         outpath = os.path.join(outpath, os.path.basename(d))
-                    if os.path.isfile(outpath) and os.path.getsize(outpath) == s and s > 0 and d not in mtime:
+                    if os.path.isfile(outpath) and os.path.getsize(outpath) == s and s > 0 and d not in mtime and not args.no_md5:
                         md5s.append(p.submit(check_md5, outpath, s))
                         log.info("Hashlib md5 %s file in localhost", outpath)
                         local2remote[outpath] = d
@@ -432,7 +432,7 @@ async def hsync(args, conf):
                     for d, _ in list(trans_files.items()):
                         if not os.path.isfile(file_map[d]):
                             trans_files.pop(d)
-                    if len(trans_files):
+                    if len(trans_files) and not args.no_md5:
                         md5query = trans_files.copy()
                         log.info("Await remote md5 return: %s",
                                  list(md5query.keys()))
