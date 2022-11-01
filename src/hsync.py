@@ -350,6 +350,8 @@ async def hsync(args, conf):
         trans_files = {}
         listdir = await make_request("POST", "https://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
         mtime_tmp = {i: j[1] for i, j in listdir.items()}
+        if not mtime and args.from_now:
+            mtime.update(mtime_tmp)
         listdir = {i: j[0] for i, j in listdir.items()}
         if not listdir:
             sys.exit("No such file or directory %s in remote host." %
@@ -389,6 +391,8 @@ async def hsync(args, conf):
                     log.info("Hashlib md5 files done, %s", md5_local)
                 try:
                     for d, s in listdir.items():
+                        if d in mtime and mtime[d] == mtime_tmp[d]:
+                            continue
                         if d == remote_path:
                             outpath = local_path
                         else:
