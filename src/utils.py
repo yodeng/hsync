@@ -294,6 +294,8 @@ def hsyncArg():
                         help='connect port, 10808 by default',  metavar="<int>")
     parser.add_argument("-c", "--config", type=str,
                         help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
+    parser.add_argument("--from-now", action="store_true", default=False,
+                        help="skip exists files or directorys and start hsync from new changes")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
     return parser.parse_args()
