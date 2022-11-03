@@ -19,6 +19,7 @@ import subprocess
 from copy import deepcopy
 from fnmatch import fnmatch
 from threading import Thread
+from logging.handlers import RotatingFileHandler
 from multiprocessing import cpu_count, current_process, get_logger, Pool
 
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait, as_completed
@@ -272,6 +273,8 @@ def hsyncdArg():
                         help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
     parser.add_argument("-d", "--daemon", action='store_true',
                         help="daemon process", default=False)
+    parser.add_argument('-v', '--version',
+                        action='version', version="v" + __version__)
     return parser.parse_known_args()
 
 
@@ -300,6 +303,8 @@ def hsyncArg():
                         help="do not md5 check for hsync")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
+    parser.add_argument('-v', '--version',
+                        action='version', version="v" + __version__)
     return parser.parse_args()
 
 
@@ -318,6 +323,8 @@ def hscpArg():
                         help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
     parser.add_argument("-o", "--output", type=str,
                         help="output path", metavar="<str>")
+    parser.add_argument('-v', '--version',
+                        action='version', version="v" + __version__)
     return parser.parse_args()
 
 
@@ -346,7 +353,8 @@ def loger(logfile=None, level="info", multi=False):
     if logfile is None:
         h = logging.StreamHandler(sys.stdout)
     else:
-        h = logging.FileHandler(logfile, mode='a+')
+        h = RotatingFileHandler(
+            logfile, mode="a", maxBytes=100 >> 20, backupCount=100, encoding=None)
     h.setFormatter(f)
     logger.addHandler(h)
     return logger
@@ -389,11 +397,8 @@ def mkfile(filename, size=0, add=False):
             pass
 
 
-def addLogHandler(logfile=None):
-    if logfile is None:
-        h = logging.StreamHandler(sys.stdout)
-    else:
-        h = logging.FileHandler(logfile, mode='a+')
+def AddStdoutLog():
+    h = logging.StreamHandler(sys.stdout)
     logger = logging.getLogger()
     oh = logger.handlers[0]
     h.setFormatter(oh.formatter)
