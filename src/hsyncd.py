@@ -154,8 +154,7 @@ def main():
     ReloadConf.conf.update_config(args.config)
     daemon = HsyncDaemon(args, )
     log = loger(args.log)
-    if args.log:
-        addLogHandler()
+    AddStdoutLog()
     if 'stop' in sys.argv:
         daemon.stop()
     elif 'start' in sys.argv:
