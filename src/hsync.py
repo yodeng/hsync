@@ -255,7 +255,7 @@ class Hsync(HsyncLog):
         self.md5 = md5
         self.ssl = ssl
         self.sem = sem
-        if self.extra["path"] not in self.md5:
+        if self.extra["path"] not in self.md5 or self.from_range == 0:
             self.md5[self.extra["path"]] = hashlib.md5()
 
     async def run(self):
@@ -281,7 +281,7 @@ class Hsync(HsyncLog):
             elif req.status == 401:
                 self.loger.error("HsyncKeyError")
                 return
-            with open(self.outfile, 'ab') as f:
+            with open(self.outfile, self.from_range and 'ab' or "wb") as f:
                 async for chunk in req.content.iter_chunked(10240):
                     if chunk:
                         f.write(chunk)
@@ -347,12 +347,11 @@ async def hsync(args, conf):
     mtime = {}
     sem = asyncio.Semaphore(int(conf.hsync.Max_runing))
     SSLCONTEXT = ssl_context(conf, "hsync")
+    exists_path = await make_request("POST", "https://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
     while n < int(conf.hsync.Max_timeout_retry):
         trans_files = {}
         listdir = await make_request("POST", "https://{}:{}/lsdir".format(host, port), json={"path": remote_path}, timeout=int(conf.hsync.Data_timeout), ssl=SSLCONTEXT)
         mtime_tmp = {i: j[1] for i, j in listdir.items()}
-        if not mtime and args.from_now:
-            mtime.update(mtime_tmp)
         listdir = {i: j[0] for i, j in listdir.items()}
         if not listdir:
             sys.exit("No such file or directory %s in remote host." %
@@ -367,6 +366,8 @@ async def hsync(args, conf):
                 local2remote = {}
                 md5query = {}
                 for d, s in listdir.items():
+                    if args.ignore_exists and d in exists_path:
+                        continue
                     outpath = d == remote_path and local_path or os.path.join(
                         local_path, d[len(remote_path)+1:])
                     if s > 0 and d == remote_path and os.path.isdir(outpath):
@@ -392,7 +393,7 @@ async def hsync(args, conf):
                     log.info("Hashlib md5 files done, %s", md5_local)
                 try:
                     for d, s in listdir.items():
-                        if d in mtime and mtime[d] == mtime_tmp[d]:
+                        if args.ignore_exists and d in exists_path:
                             continue
                         if d == remote_path:
                             outpath = local_path
@@ -422,10 +423,11 @@ async def hsync(args, conf):
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
                             else:
-                                os.remove(file_map[d])
+                                if os.path.isfile(file_map.get(d, "")):
+                                    os.remove(file_map[d])
                                 md5_rec[d] = hashlib.md5()
                                 sync = Hsync(url="https://{}:{}/get".format(host, port), outfile=outpath, ssl=SSLCONTEXT,
-                                             ss=0, ts=s, md5=md5_rec, sem=sem, path=d)
+                                             ss=0, ts=s, md5=md5_rec, sem=sem, path=d, config=conf)
                                 tasks.append(sync.run())
                                 file_map[d] = outpath
                                 trans_files[d] = s+1
@@ -443,8 +445,9 @@ async def hsync(args, conf):
                         for f, md5 in checkout.items():
                             if md5 != (isinstance(md5_rec[f], str) and md5_rec[f] or md5_rec[f].hexdigest()) or f not in md5query:
                                 log.warn(
-                                    "MD5 check error for %s file, re-hsync", file_map[f])
+                                    "MD5 check error for %s file, will re-hsync", file_map[f])
                                 os.remove(file_map[f])
+                                mtime_tmp.pop(f)
                                 md5_rec[f] = hashlib.md5()
                 except asyncio.TimeoutError as e:
                     n += 1
