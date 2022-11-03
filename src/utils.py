@@ -122,7 +122,7 @@ class HsyncDecorator(object):
                             "%s file forbidden in %s", file_path, self.conf.info.hsyncd.Forbidden_dir)
                         return web.HTTPForbidden()
             else:
-                return web.HTTPForbidden()
+                return web.HTTPForbidden(reason="no such file or directory %s in remote" % file_path)
             self.hsync_file_path = file_path
             res = await func(self, *args, **kwargs)
             return res
@@ -297,8 +297,8 @@ def hsyncArg():
                         help='connect port, 10808 by default',  metavar="<int>")
     parser.add_argument("-c", "--config", type=str,
                         help="configuration files to search, will overwrite `HSYNC_DIR` default setting if conflict", metavar="<file>")
-    parser.add_argument("--from-now", action="store_true", default=False,
-                        help="skip exists files or directorys and start hsync from new changes")
+    parser.add_argument("--ignore-exists", action="store_true", default=False,
+                        help="ignore exists files or directorys whatever changes")
     parser.add_argument("--no-md5", action="store_true", default=False,
                         help="do not md5 check for hsync")
     parser.add_argument("-o", "--output", type=str,
