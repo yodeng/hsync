@@ -263,15 +263,16 @@ class Hsync(HsyncLog):
         self.connector = TCPConnector(
             limit=self.tcp_conn, ssl=self.ssl)
         async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
-            self.headers["Range"] = "bytes={}-{}".format(
-                self.from_range, self.end_range)
             async with self.sem:
                 self.loger.info("Starting async remote file: %s --> %s, size from %s to %s",
                                 self.extra["path"], self.outfile, self.from_range, self.end_range)
                 with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
-                    await self._hync(session, pbar=bar, headers=self.headers)
+                    await self._hync(session, pbar=bar)
 
-    async def _hync(self, session, pbar=None,  headers={}):
+    async def _hync(self, session, pbar=None):
+        headers = self.headers.copy()
+        headers["Range"] = "bytes={}-{}".format(
+            self.from_range, self.end_range)
         async with session.post(self.url, headers=headers, timeout=self.timeout, json=self.extra) as req:
             if req.status == 403:
                 self.loger.error(
@@ -280,7 +281,7 @@ class Hsync(HsyncLog):
             elif req.status == 401:
                 self.loger.error("HsyncKeyError")
                 return
-            with open(self.outfile, self.from_range and 'ab' or "wb") as f:
+            with open(self.outfile, 'ab') as f:
                 async for chunk in req.content.iter_chunked(10240):
                     if chunk:
                         f.write(chunk)
