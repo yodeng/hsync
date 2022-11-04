@@ -264,7 +264,7 @@ class Hsync(HsyncLog):
             limit=self.tcp_conn, ssl=self.ssl)
         async with ClientSession(connector=self.connector, timeout=self.timeout, auto_decompress=False) as session:
             async with self.sem:
-                self.loger.info("Starting async remote file: %s --> %s, size from %s to %s",
+                self.loger.info("Starting hsync remote file: %s --> %s, size from %s to %s",
                                 self.extra["path"], self.outfile, self.from_range, self.end_range)
                 with tqdm(disable=self.quite, total=self.end_range, initial=self.from_range, unit='', ascii=True, unit_scale=True, unit_divisor=1024) as bar:
                     await self._hync(session, pbar=bar)
@@ -288,7 +288,7 @@ class Hsync(HsyncLog):
                         f.flush()
                         self.md5[self.extra["path"]].update(chunk)
                         pbar.update(len(chunk))
-            self.loger.info("Finished async remote file: %s --> %s",
+            self.loger.info("Finished hsync remote file: %s --> %s",
                             self.extra["path"], self.outfile)
 
 
@@ -411,7 +411,10 @@ async def hsync(args, conf):
                                 outpath) and os.path.getsize(outpath) or 0
                             if current_size == s:
                                 if s == 0:
-                                    mkfile(outpath, s)
+                                    if not os.path.isfile(outpath):
+                                        log.info(
+                                            "hsync remote empty file: %s --> %s", d, outpath)
+                                        mkfile(outpath, s)
                                 else:
                                     file_map[d] = outpath
                                     if d in mtime and mtime[d] != mtime_tmp[d]:

@@ -21,7 +21,6 @@ from fnmatch import fnmatch
 from threading import Thread
 from logging.handlers import RotatingFileHandler
 from multiprocessing import cpu_count, current_process, get_logger, Pool
-
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait, as_completed
 
 from tqdm import tqdm
@@ -379,10 +378,7 @@ def mkdir(path):
 
 
 def mkfile(filename, size=0, add=False):
-    if os.path.isfile(filename):
-        mode = "r+b"
-    else:
-        mode = "wb"
+    mode = os.path.isfile(filename) and "r+b" or "wb"
     with open(filename, mode) as f:
         cur = 0
         if add:
@@ -727,3 +723,12 @@ class HsyncKey(object):
         self.create_hsyncd_key(length=length, days=days)
         self.create_hsync_key(length=length, days=days)
         self.rm_tmp()
+
+
+def isSwapFile(path):
+    if not os.path.isfile(path):
+        return False
+    name = os.path.basename(path)
+    if name.endswith(".swp") and name.startswith("."):
+        return True
+    return False

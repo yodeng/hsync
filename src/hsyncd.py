@@ -62,7 +62,7 @@ class Listpath(web.View, HsyncLog, ReloadConf):
             qpath = os.path.abspath(qpath)
             for a, b, c in os.walk(qpath, followlinks=True):
                 if len(res) > 10000:
-                    return web.HTTPForbidden(reason="Too many files or dirs (> 10000)under the query path %s" % qpath)
+                    return web.HTTPForbidden(reason="Too many files or dirs (>10000) under the query path %s" % qpath)
                 for d in b:
                     d = os.path.join(a, d)
                     if not os.listdir(d):
